@@ -11,6 +11,8 @@ pub fn Sidebar() -> impl IntoView {
             <ul class="nav-links">
                 <li><A href="/">"Dashboard"</A></li>
                 <li><A href="/providers">"Providers"</A></li>
+                <li><A href="/routes">"Routes"</A></li>
+                <li><A href="/api-keys">"API Keys"</A></li>
                 <li><A href="/analytics">"Analytics"</A></li>
                 <li><A href="/settings">"Settings"</A></li>
             </ul>

@@ -5,6 +5,8 @@ use crate::pages::dashboard::Dashboard;
 use crate::pages::providers::Providers;
 use crate::pages::analytics::Analytics;
 use crate::pages::settings::Settings;
+use crate::pages::route_rules::RouteRules;
+use crate::pages::api_keys::ApiKeys;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -16,6 +18,8 @@ pub fn App() -> impl IntoView {
                     <Routes>
                         <Route path="/" view= Dashboard/>
                         <Route path="/providers" view= Providers/>
+                        <Route path="/routes" view= RouteRules/>
+                        <Route path="/api-keys" view= ApiKeys/>
                         <Route path="/analytics" view= Analytics/>
                         <Route path="/settings" view= Settings/>
                         <Route path="/*" view= || view! { <h1>"Not Found"</h1> }/>
