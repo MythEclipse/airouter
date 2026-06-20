@@ -6,7 +6,9 @@ use axum::{
     routing::get,
     Router,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
+use arc_swap::ArcSwap;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
@@ -28,12 +30,10 @@ pub fn create_router(
     let api_routes = crate::api::openai::routes(state.clone())
         .merge(crate::api::anthropic::routes(state.clone()))
         .merge(crate::api::dashboard::routes(state.clone()))
-        // Rate limiter middleware on API routes
         .route_layer(from_fn_with_state(
             state.clone(),
             crate::rate_limit::rate_limit_middleware,
         ))
-        // Auth middleware on API routes
         .route_layer(from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -41,13 +41,9 @@ pub fn create_router(
 
     Router::new()
         .route("/health", axum::routing::get(health_check))
-        // Prometheus metrics
         .route("/metrics", get(handle_metrics))
-        // Request ID middleware for ALL routes
         .layer(from_fn(request_id_middleware))
-        // API routes with auth + rate limit
         .merge(api_routes)
-        // Frontend static — no auth, catches everything else
         .fallback_service(
             ServeDir::new(FRONTEND_DIST).append_index_html_on_directories(true)
         )
@@ -59,13 +55,38 @@ pub fn create_router(
 #[derive(Clone)]
 pub struct AppState {
     pub db: sea_orm::DatabaseConnection,
-    pub settings: Arc<crate::config::settings::Settings>,
-    pub registry: Arc<provider::ProviderRegistry>,
+    pub redis: redis::aio::ConnectionManager,
+    pub config: Arc<ArcSwap<crate::config::settings::Settings>>,
+    pub registry: Arc<ArcSwap<provider::ProviderRegistry>>,
+    pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
     pub rate_limiter: crate::rate_limit::RateLimitState,
     pub balancer: Arc<LoadBalancer>,
     pub engine: Arc<RouteEngine>,
     pub tracker: crate::tracker::RequestTracker,
     pub prometheus_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+}
+
+impl AppState {
+    /// Hot-reload config from database
+    pub async fn reload_config(&self) -> Result<(), sea_orm::DbErr> {
+        let settings = crate::config::db::load_config_from_db(&self.db).await?;
+        let registry = provider::ProviderRegistry::from_config(&settings.providers);
+
+        // Load key hashes from DB
+        use crate::entities::api_key;
+        use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
+        let key_rows = api_key::Entity::find()
+            .filter(api_key::Column::Enabled.eq(true))
+            .all(&self.db).await?;
+        let hashes: HashSet<String> = key_rows.into_iter().map(|r| r.key_hash).collect();
+
+        self.config.store(Arc::new(settings));
+        self.registry.store(Arc::new(registry));
+        self.key_hashes.store(Arc::new(hashes));
+
+        tracing::info!("Configuration hot-reloaded from database");
+        Ok(())
+    }
 }
 
 async fn health_check() -> &'static str {

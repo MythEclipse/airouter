@@ -1,16 +1,15 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use axum::http::StatusCode;
 use axum::response::{
     sse::{Event, Sse},
     IntoResponse, Json, Response,
 };
-use dashmap::DashMap;
 use std::convert::Infallible;
 use tokio_stream::StreamExt;
+use arc_swap::ArcSwap;
 use crate::config::settings::{RouteConfig, Settings, StrategyKind};
-use crate::provider::{ErrorClass, Provider, ProviderRegistry};
+use crate::provider::{ErrorClass, ProviderRegistry};
 use crate::router::balancer::LoadBalancer;
 use crate::tracker::RequestTracker;
 use crate::types::openai::*;
@@ -44,87 +43,36 @@ impl IntoResponse for DispatchError {
     }
 }
 
-// ─── Rotation State (for round-robin strategies) ─────────────────
-
-struct RotationState {
-    index: AtomicUsize,
-    current_provider: Mutex<Option<String>>,
-    request_count: AtomicUsize,
-}
-
-impl RotationState {
-    fn new() -> Self {
-        Self {
-            index: AtomicUsize::new(0),
-            current_provider: Mutex::new(None),
-            request_count: AtomicUsize::new(0),
-        }
-    }
-
-    fn select(&self, providers: &[String], sticky_limit: Option<usize>) -> String {
-        if providers.is_empty() {
-            return String::new();
-        }
-        match sticky_limit {
-            Some(limit) => {
-                let mut current = self.current_provider.lock().unwrap();
-                let count = self.request_count.load(Ordering::Relaxed);
-
-                if let Some(ref cur) = *current {
-                    if providers.contains(cur) && count < limit {
-                        self.request_count.fetch_add(1, Ordering::Relaxed);
-                        return cur.clone();
-                    }
-                }
-                // Advance to next provider
-                let idx = self.index.fetch_add(1, Ordering::Relaxed) % providers.len();
-                let selected = providers[idx].clone();
-                *current = Some(selected.clone());
-                self.request_count.store(1, Ordering::Relaxed);
-                selected
-            }
-            None => {
-                let idx = self.index.fetch_add(1, Ordering::Relaxed) % providers.len();
-                providers[idx].clone()
-            }
-        }
-    }
-}
-
 // ─── RouteEngine ─────────────────────────────────────────────────
 
 pub struct RouteEngine {
-    registry: Arc<ProviderRegistry>,
-    rotation_states: Arc<DashMap<String, RotationState>>,
+    registry: Arc<ArcSwap<ProviderRegistry>>,
+    config: Arc<ArcSwap<Settings>>,
     balancer: Arc<LoadBalancer>,
-    settings: Arc<Settings>,
+    redis: redis::aio::ConnectionManager,
 }
 
 impl RouteEngine {
     pub fn new(
-        registry: Arc<ProviderRegistry>,
+        registry: Arc<ArcSwap<ProviderRegistry>>,
+        config: Arc<ArcSwap<Settings>>,
         balancer: Arc<LoadBalancer>,
-        settings: Arc<Settings>,
+        redis: redis::aio::ConnectionManager,
     ) -> Self {
-        Self {
-            registry,
-            rotation_states: Arc::new(DashMap::new()),
-            balancer,
-            settings,
-        }
+        Self { registry, config, balancer, redis }
     }
 
     /// Find a RouteConfig for a model (exact match or wildcard *)
-    pub fn find_route(&self, model: &str) -> Option<&RouteConfig> {
-        for route in &self.settings.routes {
+    fn find_route(&self, model: &str) -> Option<RouteConfig> {
+        let settings = self.config.load();
+        for route in &settings.routes {
             if route.model == model {
-                return Some(route);
+                return Some(route.clone());
             }
         }
-        // Wildcard fallback
-        for route in &self.settings.routes {
+        for route in &settings.routes {
             if route.model == "*" {
-                return Some(route);
+                return Some(route.clone());
             }
         }
         None
@@ -176,7 +124,7 @@ impl RouteEngine {
     }
 
     /// Extract ordered provider names for a model, with capability reordering
-    fn get_provider_names(&self, model: &str, capabilities: &[&str]) -> Result<Vec<String>, DispatchError> {
+    async fn get_provider_names(&self, model: &str, capabilities: &[&str]) -> Result<Vec<String>, DispatchError> {
         let route = self.find_route(model).ok_or_else(|| {
             DispatchError::ModelNotFound(format!("No route found for model '{}'", model))
         })?;
@@ -198,12 +146,14 @@ impl RouteEngine {
         }
 
         // Capability reorder
+        let registry = self.registry.load();
         if !capabilities.is_empty() {
-            names = Self::reorder_by_capability(names, capabilities, &self.registry);
+            names = Self::reorder_by_capability(names, capabilities, &registry);
         }
+        drop(registry);
 
         // Load balancer selection: reorder so selected is first
-        if let Some(selected) = self.balancer.select_by_name(&names) {
+        if let Some(selected) = self.balancer.select_by_name(&names).await {
             let mut reordered = vec![selected.clone()];
             for n in names {
                 if n != selected {
@@ -226,29 +176,27 @@ impl RouteEngine {
     ) -> Result<Response, DispatchError> {
         let model = request.model.clone();
         let capabilities = Self::detect_capabilities(&request);
-
-        let provider_names = self.get_provider_names(&model, &capabilities)?;
+        let provider_names = self.get_provider_names(&model, &capabilities).await?;
         let route = self.find_route(&model).ok_or_else(|| {
             DispatchError::ModelNotFound(format!("No route for model '{}'", model))
         })?;
 
-        let strategy = route.effective_strategy(self.settings.default_strategy.as_ref());
+        let settings = self.config.load();
+        let strategy = route.effective_strategy(settings.default_strategy.as_ref());
+        drop(settings);
 
         match strategy {
             StrategyKind::Fusion => {
-                // Fusion is always non-streaming
                 crate::router::fusion::execute_fusion(
-                    provider_names,
-                    request,
-                    self.registry.clone(),
-                    &self.settings.routes,
+                    provider_names, request,
+                    &self.registry,
                     tracker,
                     route.combo.as_ref().unwrap_or(&Default::default()),
-                    &model,
+                    &self.redis, &model,
                 ).await
             }
             StrategyKind::RoundRobin => {
-                self.execute_round_robin(provider_names, request, route, is_stream, tracker, &model).await
+                self.execute_round_robin(provider_names, request, &route, is_stream, tracker, &model).await
             }
             StrategyKind::Fallback | StrategyKind::Single => {
                 self.execute_sequential(provider_names, request, is_stream, tracker, &model).await
@@ -270,12 +218,13 @@ impl RouteEngine {
         let mut last_error = String::new();
 
         for (i, pname) in provider_names.iter().enumerate() {
-            let provider = match self.registry.get(pname) {
+            let registry = self.registry.load();
+            let provider = match registry.get(pname) {
                 Some(p) => p,
                 None => continue,
             };
 
-            if i > 0 && self.balancer.is_on_cooldown(pname) {
+            if i > 0 && self.balancer.is_on_cooldown(pname).await {
                 tracing::debug!(provider = %pname, "Skipping on cooldown");
                 continue;
             }
@@ -284,8 +233,8 @@ impl RouteEngine {
                 match provider.chat_completion_stream(request.clone()).await {
                     Ok(provider_stream) => {
                         let elapsed = start.elapsed().as_millis();
-                        tracker.record_request(pname, model, elapsed as u64, true);
-                        self.balancer.clear_cooldown(pname);
+                        tracker.record_request(&self.redis, pname, model, elapsed as u64, true).await;
+                        self.balancer.clear_cooldown(pname).await;
 
                         let chunk_stream = provider_stream.map(|chunk_result| {
                             match chunk_result {
@@ -310,8 +259,8 @@ impl RouteEngine {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
                         tracing::warn!(provider = %pname, model = %model, error = %e, "Stream provider failed");
-                        tracker.record_request(pname, model, elapsed as u64, false);
-                        self.balancer.mark_cooldown_with_class(pname, class);
+                        tracker.record_request(&self.redis, pname, model, elapsed as u64, false).await;
+                        self.balancer.mark_cooldown_with_class(pname, class).await;
                         last_error = e.to_string();
                         if !e.is_retryable() || class == ErrorClass::BadRequest {
                             break;
@@ -322,16 +271,16 @@ impl RouteEngine {
                 match provider.chat_completion(request.clone()).await {
                     Ok(resp) => {
                         let elapsed = start.elapsed().as_millis();
-                        tracker.record_request(pname, model, elapsed as u64, true);
-                        self.balancer.clear_cooldown(pname);
+                        tracker.record_request(&self.redis, pname, model, elapsed as u64, true).await;
+                        self.balancer.clear_cooldown(pname).await;
                         return Ok(Json(resp).into_response());
                     }
                     Err(e) => {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
                         tracing::warn!(provider = %pname, model = %model, error = %e, "Provider failed");
-                        tracker.record_request(pname, model, elapsed as u64, false);
-                        self.balancer.mark_cooldown_with_class(pname, class);
+                        tracker.record_request(&self.redis, pname, model, elapsed as u64, false).await;
+                        self.balancer.mark_cooldown_with_class(pname, class).await;
                         last_error = e.to_string();
                         if !e.is_retryable() || class == ErrorClass::BadRequest {
                             break;
@@ -356,73 +305,55 @@ impl RouteEngine {
         model: &str,
     ) -> Result<Response, DispatchError> {
         let sticky_limit = route.combo.as_ref().and_then(|c| c.sticky_limit);
-        let rotated = {
-            let state = self.rotation_states
-                .entry(model.to_string())
-                .or_insert_with(RotationState::new);
-            let selected = state.select(&provider_names, sticky_limit);
-            let (mut matched, others): (Vec<_>, Vec<_>) = provider_names.into_iter()
-                .partition(|p| *p == selected);
-            matched.extend(others);
-            matched
-        };
-
+        let rotated = self.rotate_providers(model, provider_names, sticky_limit).await;
         self.execute_sequential(rotated, request, is_stream, tracker, model).await
     }
-}
 
-// ─── Keep RouteModel trait for backward compat ───────────────────
+    /// Redis-based round-robin rotation with optional sticky limit
+    async fn rotate_providers(
+        &self,
+        model: &str,
+        providers: Vec<String>,
+        sticky_limit: Option<usize>,
+    ) -> Vec<String> {
+        let index_key = format!("rotation_index:{}", model);
+        let mut conn = self.redis.clone();
+        let idx_raw: Result<i64, _> = redis::cmd("INCR")
+            .arg(&index_key)
+            .query_async(&mut conn).await;
+        let len = if providers.is_empty() { 1 } else { providers.len() };
+        let idx = (idx_raw.unwrap_or(0) as usize) % len;
+        let selected = providers[idx].clone();
 
-pub trait RouteModel {
-    fn resolve(&self, model: &str, routes: &[RouteConfig]) -> Result<&Box<dyn Provider>, String>;
-    fn get_fallback_providers(&self, model: &str, routes: &[RouteConfig]) -> Vec<&Box<dyn Provider>>;
-}
+        if let Some(limit) = sticky_limit {
+            let count_key = format!("rotation_count:{}:{}", model, selected);
+            let mut conn2 = self.redis.clone();
+            let count: i64 = redis::cmd("GET")
+                .arg(&count_key)
+                .query_async(&mut conn2).await.unwrap_or(0);
 
-impl RouteModel for ProviderRegistry {
-    fn resolve(&self, model: &str, routes: &[RouteConfig]) -> Result<&Box<dyn Provider>, String> {
-        for route in routes {
-            if route.model == model {
-                if let Some(provider_name) = &route.provider {
-                    return self.get(provider_name)
-                        .ok_or_else(|| format!("Provider '{}' not found for model '{}'", provider_name, model));
-                }
-                if let Some(providers) = &route.providers {
-                    if let Some(first) = providers.first() {
-                        return self.get(first)
-                            .ok_or_else(|| format!("Provider '{}' not found for model '{}'", first, model));
-                    }
-                }
+            if count < limit as i64 {
+                let mut conn3 = self.redis.clone();
+                let _: Result<(), _> = redis::cmd("INCR")
+                    .arg(&count_key)
+                    .query_async(&mut conn3).await;
+
+                let (mut matched, others): (Vec<_>, Vec<_>) = providers.into_iter()
+                    .partition(|p| *p == selected);
+                matched.extend(others);
+                return matched;
             }
+            // Exceeded limit, reset count
+            let mut conn4 = self.redis.clone();
+            let _: Result<(), _> = redis::cmd("SET")
+                .arg(&count_key).arg("1")
+                .query_async(&mut conn4).await;
         }
-        for route in routes {
-            if route.model == "*" {
-                if let Some(provider_name) = &route.provider {
-                    return self.get(provider_name)
-                        .ok_or_else(|| format!("Fallback provider '{}' not found", provider_name));
-                }
-                if let Some(providers) = &route.providers {
-                    if let Some(first) = providers.first() {
-                        return self.get(first)
-                            .ok_or_else(|| format!("Fallback provider '{}' not found", first));
-                    }
-                }
-            }
-        }
-        Err(format!("No route found for model '{}'", model))
-    }
 
-    fn get_fallback_providers(&self, model: &str, routes: &[RouteConfig]) -> Vec<&Box<dyn Provider>> {
-        for route in routes {
-            if route.model == model || route.model == "*" {
-                if let Some(providers) = &route.providers {
-                    return providers.iter()
-                        .filter_map(|name| self.get(name))
-                        .skip(1)
-                        .collect();
-                }
-            }
-        }
-        Vec::new()
+        let (mut matched, others): (Vec<_>, Vec<_>) = providers.into_iter()
+            .partition(|p| *p == selected);
+        matched.extend(others);
+        matched
     }
 }
 
@@ -523,15 +454,156 @@ mod tests {
         assert_eq!(result, vec!["vision-provider", "text-provider"]);
     }
 
+    // ── NEW: Audio capability detection tests ────────────────────────
+
     #[test]
-    fn test_rotation_state_advance() {
-        let state = RotationState::new();
-        let providers = vec!["a".into(), "b".into(), "c".into()];
-        let r1 = state.select(&providers, Some(1));
-        let r2 = state.select(&providers, Some(1));
-        let r3 = state.select(&providers, Some(1));
-        // With 3 providers and sticky=1, each call should advance
-        assert_ne!(r1, r2, "two calls with sticky=1 should give different providers");
-        assert_ne!(r1, r3);
+    fn test_detect_capabilities_with_audio() {
+        let req = ChatCompletionRequest {
+            model: "test".into(),
+            messages: vec![Message {
+                role: "user".into(),
+                content: Some(Content::Parts(vec![ContentPart {
+                    part_type: "input_audio".into(),
+                    text: None,
+                    image_url: None,
+                }])),
+                name: None, tool_calls: None, tool_call_id: None,
+            }],
+            ..Default::default()
+        };
+        let caps = RouteEngine::detect_capabilities(&req);
+        assert_eq!(caps, vec!["audio"]);
+    }
+
+    #[test]
+    fn test_detect_capabilities_mixed_vision_audio() {
+        let req = ChatCompletionRequest {
+            model: "test".into(),
+            messages: vec![Message {
+                role: "user".into(),
+                content: Some(Content::Parts(vec![
+                    ContentPart {
+                        part_type: "image_url".into(), text: None,
+                        image_url: Some(ImageUrl { url: "data:...".into(), detail: None }),
+                    },
+                    ContentPart {
+                        part_type: "input_audio".into(), text: None, image_url: None,
+                    },
+                ])),
+                name: None, tool_calls: None, tool_call_id: None,
+            }],
+            ..Default::default()
+        };
+        let caps = RouteEngine::detect_capabilities(&req);
+        assert!(caps.contains(&"vision"));
+        assert!(caps.contains(&"audio"));
+        assert_eq!(caps.len(), 2);
+    }
+
+    #[test]
+    fn test_detect_capabilities_multiple_images_dedup() {
+        let req = ChatCompletionRequest {
+            model: "test".into(),
+            messages: vec![Message {
+                role: "user".into(),
+                content: Some(Content::Parts(vec![
+                    ContentPart {
+                        part_type: "image_url".into(), text: None,
+                        image_url: Some(ImageUrl { url: "data:img1".into(), detail: None }),
+                    },
+                    ContentPart {
+                        part_type: "image_url".into(), text: None,
+                        image_url: Some(ImageUrl { url: "data:img2".into(), detail: None }),
+                    },
+                ])),
+                name: None, tool_calls: None, tool_call_id: None,
+            }],
+            ..Default::default()
+        };
+        let caps = RouteEngine::detect_capabilities(&req);
+        assert_eq!(caps, vec!["vision"]);
+    }
+
+    #[test]
+    fn test_detect_capabilities_messages_span_multiple() {
+        let req = ChatCompletionRequest {
+            model: "test".into(),
+            messages: vec![
+                Message {
+                    role: "system".into(),
+                    content: Some(Content::Text("You are helpful.".into())),
+                    name: None, tool_calls: None, tool_call_id: None,
+                },
+                Message {
+                    role: "user".into(),
+                    content: Some(Content::Parts(vec![ContentPart {
+                        part_type: "image_url".into(), text: None,
+                        image_url: Some(ImageUrl { url: "data:pic".into(), detail: None }),
+                    }])),
+                    name: None, tool_calls: None, tool_call_id: None,
+                },
+            ],
+            ..Default::default()
+        };
+        let caps = RouteEngine::detect_capabilities(&req);
+        assert_eq!(caps, vec!["vision"]);
+    }
+
+    // ── NEW: Audio reorder capability tests ──────────────────────────
+
+    #[test]
+    fn test_reorder_by_capability_audio_provider_prioritized() {
+        let mut registry = ProviderRegistry::new();
+        registry.capabilities.insert("vision-provider".into(), vec!["vision".into()]);
+        registry.capabilities.insert("audio-provider".into(), vec!["audio".into()]);
+        registry.capabilities.insert("text-provider".into(), vec![]);
+
+        let providers = vec!["text-provider".into(), "vision-provider".into(), "audio-provider".into()];
+        let result = RouteEngine::reorder_by_capability(providers.clone(), &["audio"], &registry);
+        assert_eq!(result[0], "audio-provider", "audio provider should be first");
+        // text should be last (no capabilities)
+        assert_eq!(result[2], "vision-provider");
+    }
+
+    #[test]
+    fn test_reorder_by_capability_multiple_matches_preserves_order() {
+        let mut registry = ProviderRegistry::new();
+        registry.capabilities.insert("cap-a".into(), vec!["vision".into()]);
+        registry.capabilities.insert("cap-b".into(), vec!["vision".into(), "audio".into()]);
+        registry.capabilities.insert("no-cap".into(), vec![]);
+
+        let providers = vec!["no-cap".into(), "cap-a".into(), "cap-b".into()];
+        let result = RouteEngine::reorder_by_capability(providers, &["vision"], &registry);
+        // Both vision-capable providers should be before no-cap
+        let pos_a = result.iter().position(|p| p == "cap-a").unwrap();
+        let pos_b = result.iter().position(|p| p == "cap-b").unwrap();
+        let pos_none = result.iter().position(|p| p == "no-cap").unwrap();
+        assert!(pos_a < pos_none, "cap-a should be before no-cap");
+        assert!(pos_b < pos_none, "cap-b should be before no-cap");
+        // Among matches, original order preserved
+        assert!(pos_a < pos_b, "cap-a should be before cap-b (original order)");
+    }
+
+    #[test]
+    fn test_reorder_by_capability_no_matches_unchanged() {
+        let mut registry = ProviderRegistry::new();
+        registry.capabilities.insert("only-vision".into(), vec!["vision".into()]);
+
+        let providers = vec!["only-vision".into()];
+        let result = RouteEngine::reorder_by_capability(providers.clone(), &["audio"], &registry);
+        assert_eq!(result, providers, "order unchanged when no provider has the capability");
+    }
+
+    #[test]
+    fn test_reorder_by_capability_provider_with_multiple_caps() {
+        let mut registry = ProviderRegistry::new();
+        registry.capabilities.insert("multi-cap".into(), vec!["vision".into(), "audio".into()]);
+        registry.capabilities.insert("vision-only".into(), vec!["vision".into()]);
+
+        let providers = vec!["vision-only".into(), "multi-cap".into()];
+        let result = RouteEngine::reorder_by_capability(providers, &["vision", "audio"], &registry);
+        // Both match; original order preserved among matches
+        assert_eq!(result[0], "vision-only");
+        assert_eq!(result[1], "multi-cap");
     }
 }

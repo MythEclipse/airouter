@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use axum::{
     extract::{Request, State},
@@ -6,75 +5,70 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Json},
 };
-use dashmap::DashMap;
-use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
+use arc_swap::ArcSwap;
 use crate::auth::extract_bearer_token;
 use crate::config::settings::RateLimitConfig;
 use crate::server::app::AppState;
 
-#[derive(Clone)]
+/// Redis-backed rate limiter using fixed window (INCR + EXPIRE)
 pub struct RateLimitState {
-    pub limiters: Arc<DashMap<String, Arc<DefaultDirectRateLimiter>>>,
-    pub config: RateLimitConfig,
+    pub config: ArcSwap<RateLimitConfig>,
+}
+
+// Manual clone
+impl Clone for RateLimitState {
+    fn clone(&self) -> Self {
+        Self { config: ArcSwap::from(self.config.load_full()) }
+    }
 }
 
 impl RateLimitState {
-    pub fn from_config(config: &RateLimitConfig) -> Self {
+    pub fn new(config: &RateLimitConfig) -> Self {
         Self {
-            limiters: Arc::new(DashMap::new()),
-            config: config.clone(),
+            config: ArcSwap::new(Arc::new(config.clone())),
         }
     }
 
-    pub fn get_limiter(&self, key: &str) -> Arc<DefaultDirectRateLimiter> {
-        self.limiters
-            .entry(key.to_string())
-            .or_insert_with(|| {
-                let rpm = NonZeroU32::new(self.config.requests_per_minute as u32)
-                    .unwrap_or(NonZeroU32::new(60).unwrap());
-                let burst = NonZeroU32::new(self.config.burst_size)
-                    .unwrap_or(NonZeroU32::new(20).unwrap());
-                let quota = Quota::per_minute(rpm).allow_burst(burst);
-                Arc::new(RateLimiter::direct(quota))
-            })
-            .value()
-            .clone()
+    pub fn from_config(config: &RateLimitConfig) -> Self {
+        Self::new(config)
+    }
+
+    pub async fn check_rate_limit(
+        &self,
+        redis: &redis::aio::ConnectionManager,
+        key_hash: &str,
+    ) -> Result<bool, String> {
+        let config = self.config.load();
+        if !config.enabled {
+            return Ok(true);
+        }
+        let window = chrono::Utc::now().timestamp() / 60;
+        let redis_key = format!("rate_limit:{}:{}", key_hash, window);
+
+        // INCR + EXPIRE via command pipeline
+        let mut conn = redis.clone();
+        let current: i64 = redis::cmd("INCR")
+            .arg(&redis_key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| format!("Redis error: {}", e))?;
+
+        if current == 1 {
+            let mut conn2 = redis.clone();
+            let _: Result<(), _> = redis::cmd("EXPIRE")
+                .arg(&redis_key)
+                .arg(60i64)
+                .query_async(&mut conn2)
+                .await;
+        }
+
+        Ok(current <= config.requests_per_minute as i64)
     }
 }
 
-/// Rate limit middleware. The router uses Arc<AppState>, so accept that here.
+/// Rate limit middleware
 pub async fn rate_limit_middleware(
     State(state): State<Arc<AppState>>,
-    req: Request,
-    next: Next,
-) -> impl IntoResponse {
-    if req.uri().path() == "/health" || !state.settings.rate_limit.enabled {
-        return Ok(next.run(req).await);
-    }
-
-    let key = extract_bearer_token(req.headers()).unwrap_or_default();
-    let limiter = state.rate_limiter.get_limiter(&key);
-
-    match limiter.check() {
-        Ok(_) => Ok(next.run(req).await),
-        Err(_) => {
-            let err = serde_json::json!({
-                "error": {
-                    "message": "Rate limit exceeded. Try again later.",
-                    "type": "rate_limit_error",
-                    "param": null,
-                    "code": "rate_limit_exceeded"
-                }
-            });
-            Err((StatusCode::TOO_MANY_REQUESTS, Json(err)))
-        }
-    }
-}
-
-/// Rate limit middleware that takes an optional RateLimitState directly (for use without Arc<AppState>).
-/// Only used where middleware is applied differently.
-pub async fn rate_limit_layer_fn(
-    State(rate_limiter): State<crate::rate_limit::RateLimitState>,
     req: Request,
     next: Next,
 ) -> impl IntoResponse {
@@ -82,12 +76,19 @@ pub async fn rate_limit_layer_fn(
         return Ok(next.run(req).await);
     }
 
-    let key = extract_bearer_token(req.headers()).unwrap_or_default();
-    let limiter = rate_limiter.get_limiter(&key);
+    let config = state.rate_limiter.config.load();
+    if !config.enabled {
+        drop(config);
+        return Ok(next.run(req).await);
+    }
+    drop(config);
 
-    match limiter.check() {
-        Ok(_) => Ok(next.run(req).await),
-        Err(_) => {
+    let key = extract_bearer_token(req.headers()).unwrap_or_default();
+    let key_hash = crate::auth::sha2_hex(&key);
+
+    match state.rate_limiter.check_rate_limit(&state.redis, &key_hash).await {
+        Ok(true) => Ok(next.run(req).await),
+        _ => {
             let err = serde_json::json!({
                 "error": {
                     "message": "Rate limit exceeded. Try again later.",

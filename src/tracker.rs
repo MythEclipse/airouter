@@ -1,6 +1,3 @@
-use dashmap::DashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,61 +15,79 @@ pub struct GlobalMetrics {
     pub avg_latency_ms: f64,
 }
 
+/// Redis-backed metrics store
 #[derive(Clone)]
-pub struct RequestTracker {
-    total_requests: Arc<AtomicU64>,
-    total_errors: Arc<AtomicU64>,
-    total_latency: Arc<AtomicU64>, // sum in ms
-    per_provider: Arc<DashMap<String, ProviderStats>>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct ProviderStats {
-    request_count: u64,
-    error_count: u64,
-    total_latency: u64,
-}
+pub struct RequestTracker;
 
 impl RequestTracker {
     pub fn new() -> Self {
-        Self {
-            total_requests: Arc::new(AtomicU64::new(0)),
-            total_errors: Arc::new(AtomicU64::new(0)),
-            total_latency: Arc::new(AtomicU64::new(0)),
-            per_provider: Arc::new(DashMap::new()),
-        }
+        Self
     }
 
-    pub fn record_request(&self, provider_name: &str, _model: &str, latency_ms: u64, success: bool) {
-        self.total_requests.fetch_add(1, Ordering::Relaxed);
-        self.total_latency.fetch_add(latency_ms, Ordering::Relaxed);
-
+    pub async fn record_request(
+        &self,
+        redis: &redis::aio::ConnectionManager,
+        provider_name: &str,
+        _model: &str,
+        latency_ms: u64,
+        success: bool,
+    ) {
+        {
+            let mut conn = redis.clone();
+            let _: Result<(), _> = redis::cmd("INCR")
+                .arg("metrics:total_requests")
+                .query_async(&mut conn).await;
+        }
+        {
+            let mut conn = redis.clone();
+            let _: Result<(), _> = redis::cmd("INCRBY")
+                .arg("metrics:total_latency").arg(latency_ms as i64)
+                .query_async(&mut conn).await;
+        }
+        {
+            let mut conn = redis.clone();
+            let pkey = format!("metrics:provider:{}", provider_name);
+            let _: Result<(), _> = redis::cmd("HINCRBY")
+                .arg(&pkey).arg("request_count").arg(1)
+                .query_async(&mut conn).await;
+        }
+        {
+            let mut conn = redis.clone();
+            let pkey = format!("metrics:provider:{}", provider_name);
+            let _: Result<(), _> = redis::cmd("HINCRBY")
+                .arg(&pkey).arg("total_latency").arg(latency_ms as i64)
+                .query_async(&mut conn).await;
+        }
         if !success {
-            self.total_errors.fetch_add(1, Ordering::Relaxed);
+            let mut conn = redis.clone();
+            let _: Result<(), _> = redis::cmd("INCR")
+                .arg("metrics:total_errors")
+                .query_async(&mut conn).await;
+            let mut conn = redis.clone();
+            let pkey = format!("metrics:provider:{}", provider_name);
+            let _: Result<(), _> = redis::cmd("HINCRBY")
+                .arg(&pkey).arg("error_count").arg(1)
+                .query_async(&mut conn).await;
         }
-
-        self.per_provider
-            .entry(provider_name.to_string())
-            .and_modify(|stats| {
-                stats.request_count += 1;
-                stats.total_latency += latency_ms;
-                if !success {
-                    stats.error_count += 1;
-                }
-            })
-            .or_insert_with(|| {
-                ProviderStats {
-                    request_count: 1,
-                    error_count: if !success { 1 } else { 0 },
-                    total_latency: latency_ms,
-                }
-            });
     }
 
-    pub fn global_metrics(&self) -> GlobalMetrics {
-        let total = self.total_requests.load(Ordering::Relaxed);
-        let errors = self.total_errors.load(Ordering::Relaxed);
-        let latency = self.total_latency.load(Ordering::Relaxed);
+    pub async fn global_metrics(&self, redis: &redis::aio::ConnectionManager) -> GlobalMetrics {
+        let total: u64 = {
+            let mut conn = redis.clone();
+            redis::cmd("GET").arg("metrics:total_requests")
+                .query_async(&mut conn).await.unwrap_or(0)
+        };
+        let errors: u64 = {
+            let mut conn = redis.clone();
+            redis::cmd("GET").arg("metrics:total_errors")
+                .query_async(&mut conn).await.unwrap_or(0)
+        };
+        let latency: u64 = {
+            let mut conn = redis.clone();
+            redis::cmd("GET").arg("metrics:total_latency")
+                .query_async(&mut conn).await.unwrap_or(0)
+        };
+
         GlobalMetrics {
             total_requests: total,
             total_errors: errors,
@@ -80,24 +95,32 @@ impl RequestTracker {
         }
     }
 
-    pub fn provider_metrics(&self) -> Vec<ProviderMetrics> {
-        let mut result: Vec<ProviderMetrics> = self.per_provider
-            .iter()
-            .map(|entry| {
-                let stats = entry.value();
-                ProviderMetrics {
-                    name: entry.key().clone(),
-                    request_count: stats.request_count,
-                    error_count: stats.error_count,
-                    avg_latency_ms: if stats.request_count > 0 {
-                        stats.total_latency as f64 / stats.request_count as f64
-                    } else {
-                        0.0
-                    },
-                }
-            })
-            .collect();
-        result.sort_by(|a, b| b.request_count.cmp(&a.request_count));
-        result
+    pub async fn provider_metrics(
+        &self,
+        redis: &redis::aio::ConnectionManager,
+        provider_names: &[String],
+    ) -> Vec<ProviderMetrics> {
+        let mut results = Vec::new();
+        for name in provider_names {
+            let key = format!("metrics:provider:{}", name);
+            let mut conn = redis.clone();
+            let stats: Option<std::collections::HashMap<String, String>> =
+                redis::cmd("HGETALL").arg(&key)
+                    .query_async(&mut conn).await.unwrap_or(None);
+
+            if let Some(s) = stats {
+                let reqs: u64 = s.get("request_count").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let errs: u64 = s.get("error_count").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let lat: u64 = s.get("total_latency").and_then(|v| v.parse().ok()).unwrap_or(0);
+                results.push(ProviderMetrics {
+                    name: name.clone(),
+                    request_count: reqs,
+                    error_count: errs,
+                    avg_latency_ms: if reqs > 0 { lat as f64 / reqs as f64 } else { 0.0 },
+                });
+            }
+        }
+        results.sort_by(|a, b| b.request_count.cmp(&a.request_count));
+        results
     }
 }

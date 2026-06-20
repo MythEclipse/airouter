@@ -1,27 +1,19 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use dashmap::DashMap;
 use crate::provider::ErrorClass;
 
-#[derive(Debug, Clone)]
-struct CooldownEntry {
-    since: Instant,
-    duration: Duration,
-}
-
-/// Round-robin load balancer for providers within a provider group
+/// Redis-backed load balancer with cooldowns
 pub struct LoadBalancer {
     counter: AtomicUsize,
-    cooldowns: Arc<DashMap<String, CooldownEntry>>,
+    redis: redis::aio::ConnectionManager,
     base_cooldown_secs: u64,
 }
 
 impl LoadBalancer {
-    pub fn new(cooldown_secs: u64) -> Self {
+    pub fn new(redis: redis::aio::ConnectionManager, cooldown_secs: u64) -> Self {
         Self {
             counter: AtomicUsize::new(0),
-            cooldowns: Arc::new(DashMap::new()),
+            redis,
             base_cooldown_secs: cooldown_secs,
         }
     }
@@ -32,64 +24,57 @@ impl LoadBalancer {
         idx
     }
 
-    pub fn mark_cooldown(&self, provider_name: &str) {
-        let duration = Duration::from_secs(self.base_cooldown_secs);
-        self.cooldowns.insert(provider_name.to_string(), CooldownEntry { since: Instant::now(), duration });
+    pub async fn mark_cooldown(&self, provider_name: &str) {
+        let key = format!("cooldown:{}", provider_name);
+        let mut conn = self.redis.clone();
+        let _: Result<(), _> = redis::cmd("SET")
+            .arg(&key).arg("1")
+            .arg("EX").arg(self.base_cooldown_secs)
+            .query_async(&mut conn).await;
     }
 
-    pub fn mark_cooldown_with_class(&self, provider_name: &str, class: ErrorClass) {
+    pub async fn mark_cooldown_with_class(&self, provider_name: &str, class: ErrorClass) {
         let base = self.base_cooldown_secs;
         let duration = match class {
-            ErrorClass::RateLimited => Duration::from_secs(base * 2),
-            ErrorClass::Transient => Duration::from_secs(base),
-            ErrorClass::BadRequest | ErrorClass::ServerError => Duration::ZERO,
+            ErrorClass::RateLimited => base * 2,
+            ErrorClass::Transient => base,
+            ErrorClass::BadRequest | ErrorClass::ServerError => 0,
         };
-        if !duration.is_zero() {
-            self.cooldowns.insert(provider_name.to_string(), CooldownEntry { since: Instant::now(), duration });
+        if duration > 0 {
+            let key = format!("cooldown:{}", provider_name);
+            let mut conn = self.redis.clone();
+            let _: Result<(), _> = redis::cmd("SET")
+                .arg(&key).arg("1")
+                .arg("EX").arg(duration)
+                .query_async(&mut conn).await;
         }
     }
 
-    pub fn is_on_cooldown(&self, provider_name: &str) -> bool {
-        if let Some(entry) = self.cooldowns.get(provider_name) {
-            if entry.since.elapsed() < entry.duration {
-                return true;
-            }
-            drop(entry);
-            self.cooldowns.remove(provider_name);
-        }
-        false
+    pub async fn is_on_cooldown(&self, provider_name: &str) -> bool {
+        let key = format!("cooldown:{}", provider_name);
+        let mut conn = self.redis.clone();
+        let result: Option<String> = redis::cmd("GET")
+            .arg(&key)
+            .query_async(&mut conn).await.unwrap_or(None);
+        result.is_some()
     }
 
-    pub fn clear_cooldown(&self, provider_name: &str) {
-        self.cooldowns.remove(provider_name);
+    pub async fn clear_cooldown(&self, provider_name: &str) {
+        let key = format!("cooldown:{}", provider_name);
+        let mut conn = self.redis.clone();
+        let _: Result<(), _> = redis::cmd("DEL")
+            .arg(&key)
+            .query_async(&mut conn).await;
     }
 
-    /// Select a provider, skipping those on cooldown
-    pub fn select<'a>(&self, providers: &'a [&'a Box<dyn crate::provider::Provider>]) -> Option<&'a Box<dyn crate::provider::Provider>> {
-        if providers.is_empty() { return None; }
-
-        let len = providers.len();
-        let start = self.next_index(len);
-
-        for i in 0..len {
-            let idx = (start + i) % len;
-            if !self.is_on_cooldown(providers[idx].name()) {
-                return Some(providers[idx]);
-            }
-        }
-
-        Some(providers[start])
-    }
-
-    /// Select a provider name, skipping those on cooldown
-    pub fn select_by_name(&self, names: &[String]) -> Option<String> {
+    pub async fn select_by_name(&self, names: &[String]) -> Option<String> {
         if names.is_empty() { return None; }
         let len = names.len();
         let start = self.next_index(len);
 
         for i in 0..len {
             let idx = (start + i) % len;
-            if !self.is_on_cooldown(&names[idx]) {
+            if !self.is_on_cooldown(&names[idx]).await {
                 return Some(names[idx].clone());
             }
         }

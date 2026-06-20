@@ -32,7 +32,8 @@ async fn handle_list_models(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<ModelInfo>> {
     let mut models = Vec::new();
-    for provider in state.registry.all() {
+    let reg = state.registry.load();
+    for provider in reg.all() {
         for model_id in provider.models() {
             models.push(ModelInfo {
                 id: model_id.clone(),

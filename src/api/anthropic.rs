@@ -19,7 +19,8 @@ async fn handle_messages(
     State(state): State<Arc<AppState>>,
     Json(body): Json<MessagesRequest>,
 ) -> impl IntoResponse {
-    let anthropic_provider = state.registry.all().find(|p| p.provider_type() == "anthropic");
+    let reg = state.registry.load();
+    let anthropic_provider = reg.all().find(|p| p.provider_type() == "anthropic");
 
     let provider = match anthropic_provider {
         Some(p) => p,

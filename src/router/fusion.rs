@@ -6,6 +6,7 @@ use crate::config::settings::ComboConfig;
 use crate::provider::{Provider, ProviderError, ProviderRegistry};
 use crate::router::core::DispatchError;
 use crate::tracker::RequestTracker;
+use arc_swap::ArcSwap;
 use crate::types::openai::*;
 
 /// Execute fusion strategy: parallel fan-out to all providers,
@@ -13,13 +14,12 @@ use crate::types::openai::*;
 pub async fn execute_fusion(
     provider_names: Vec<String>,
     request: ChatCompletionRequest,
-    registry: Arc<ProviderRegistry>,
-    routes: &[crate::config::settings::RouteConfig],
+    registry: &Arc<ArcSwap<ProviderRegistry>>,
     tracker: &RequestTracker,
     config: &ComboConfig,
+    redis: &redis::aio::ConnectionManager,
     model: &str,
 ) -> Result<Response, DispatchError> {
-    // Strip tools, force non-streaming
     let mut fusion_request = request.clone();
     fusion_request.stream = Some(false);
     fusion_request.tools = None;
@@ -32,7 +32,7 @@ pub async fn execute_fusion(
     for pname in &provider_names {
         let req = fusion_request.clone();
         let pname = pname.clone();
-        let reg = registry.clone();
+        let reg = registry.load().clone();
 
         join_set.spawn(async move {
             let start = Instant::now();
@@ -56,7 +56,6 @@ pub async fn execute_fusion(
         return Err(DispatchError::FusionError("No providers available for fusion".into()));
     }
 
-    // Quorum/grace collection
     let min_panel = config.min_panel;
     let straggler_grace_ms = config.straggler_grace_ms;
     let model_owned = model.to_string();
@@ -82,25 +81,19 @@ pub async fn execute_fusion(
         match tokio::time::timeout(timeout, join_set.join_next()).await {
             Ok(Some(Ok((pname, latency, Ok(resp))))) => {
                 responses.push((pname, latency, resp));
-
                 if responses.len() >= min_panel && grace_deadline.is_none() {
                     grace_deadline = Some(Instant::now() + Duration::from_millis(straggler_grace_ms));
                 }
             }
             Ok(Some(Ok((pname, _, Err(e))))) => {
                 tracing::warn!(provider = %pname, error = %e, "Fusion panel provider failed");
-                tracker.record_request(&pname, &model_owned, 0, false);
+                tracker.record_request(redis, &pname, &model_owned, 0, false).await;
             }
             Ok(Some(Err(join_err))) => {
                 tracing::warn!("Fusion join error: {}", join_err);
             }
             Ok(None) => break,
-            Err(_) => {
-                if let Some(gd) = grace_deadline {
-                    if Instant::now() >= gd { break; }
-                }
-                break;
-            }
+            Err(_) => break,
         }
     }
 
@@ -109,10 +102,9 @@ pub async fn execute_fusion(
     }
 
     for (pname, latency, _) in &responses {
-        tracker.record_request(pname, &model_owned, latency.as_millis() as u64, true);
+        tracker.record_request(redis, pname, &model_owned, latency.as_millis() as u64, true).await;
     }
 
-    // If judge model configured, synthesize
     if let Some(judge_model_name) = &config.judge_model {
         let original_prompt = extract_user_prompt(&request);
         let mut panel_text = String::new();
@@ -129,14 +121,14 @@ pub async fn execute_fusion(
                 Message {
                     role: "system".into(),
                     content: Some(Content::Text(
-                        "You are a response synthesizer. Given a user request and multiple AI responses, synthesize the best combined answer. Be comprehensive and accurate.".into()
+                        "You are a response synthesizer...".into()
                     )),
                     name: None, tool_calls: None, tool_call_id: None,
                 },
                 Message {
                     role: "user".into(),
                     content: Some(Content::Text(format!(
-                        "Original request:\n{}\n\nPanel responses (anonymized):\n{}", original_prompt, panel_text
+                        "Original request:\n{}\n\nPanel responses:\n{}", original_prompt, panel_text
                     ))),
                     name: None, tool_calls: None, tool_call_id: None,
                 },
@@ -145,7 +137,7 @@ pub async fn execute_fusion(
             ..Default::default()
         };
 
-        if let Ok(judge_resp) = call_judge_async(&judge_request, &registry, routes).await {
+        if let Ok(judge_resp) = call_judge_async(&judge_request, registry).await {
             return Ok(Json(judge_resp).into_response());
         }
         tracing::warn!("Fusion judge failed, returning first panel response");
@@ -176,34 +168,12 @@ fn extract_user_prompt(request: &ChatCompletionRequest) -> String {
     String::new()
 }
 
-pub fn resolve_single_provider<'a>(
-    model: &str,
-    registry: &'a ProviderRegistry,
-    routes: &[crate::config::settings::RouteConfig],
-) -> Result<&'a Box<dyn Provider>, ProviderError> {
-    for route in routes {
-        if route.model == model {
-            if let Some(ref p) = route.provider {
-                return registry.get(p).ok_or_else(|| ProviderError::Unavailable(format!("Judge provider '{}' not found", p)));
-            }
-            if let Some(ref ps) = route.providers {
-                if let Some(first) = ps.first() {
-                    return registry.get(first).ok_or_else(|| ProviderError::Unavailable(format!("Judge provider '{}' not found", first)));
-                }
-            }
-        }
-    }
-    Err(ProviderError::Unavailable(format!("No route for judge model '{}'", model)))
-}
-
 pub async fn call_judge_async(
     request: &ChatCompletionRequest,
-    registry: &ProviderRegistry,
-    routes: &[crate::config::settings::RouteConfig],
+    registry: &Arc<ArcSwap<ProviderRegistry>>,
 ) -> Result<ChatCompletionResponse, ()> {
-    let provider = match resolve_single_provider(&request.model, registry, routes) {
-        Ok(p) => p,
-        Err(_) => return Err(()),
-    };
+    let reg = registry.load();
+    let provider = reg.get(&request.model)
+        .ok_or_else(|| ())?;
     provider.chat_completion(request.clone()).await.map_err(|_| ())
 }
