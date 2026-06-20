@@ -1,13 +1,20 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use dashmap::DashMap;
-use std::time::Instant;
+use crate::provider::ErrorClass;
+
+#[derive(Debug, Clone)]
+struct CooldownEntry {
+    since: Instant,
+    duration: Duration,
+}
 
 /// Round-robin load balancer for providers within a provider group
 pub struct LoadBalancer {
     counter: AtomicUsize,
-    cooldowns: Arc<DashMap<String, Instant>>,
-    cooldown_duration_secs: u64,
+    cooldowns: Arc<DashMap<String, CooldownEntry>>,
+    base_cooldown_secs: u64,
 }
 
 impl LoadBalancer {
@@ -15,7 +22,7 @@ impl LoadBalancer {
         Self {
             counter: AtomicUsize::new(0),
             cooldowns: Arc::new(DashMap::new()),
-            cooldown_duration_secs: cooldown_secs,
+            base_cooldown_secs: cooldown_secs,
         }
     }
 
@@ -26,19 +33,35 @@ impl LoadBalancer {
     }
 
     pub fn mark_cooldown(&self, provider_name: &str) {
-        self.cooldowns.insert(provider_name.to_string(), Instant::now());
+        let duration = Duration::from_secs(self.base_cooldown_secs);
+        self.cooldowns.insert(provider_name.to_string(), CooldownEntry { since: Instant::now(), duration });
+    }
+
+    pub fn mark_cooldown_with_class(&self, provider_name: &str, class: ErrorClass) {
+        let base = self.base_cooldown_secs;
+        let duration = match class {
+            ErrorClass::RateLimited => Duration::from_secs(base * 2),
+            ErrorClass::Transient => Duration::from_secs(base),
+            ErrorClass::BadRequest | ErrorClass::ServerError => Duration::ZERO,
+        };
+        if !duration.is_zero() {
+            self.cooldowns.insert(provider_name.to_string(), CooldownEntry { since: Instant::now(), duration });
+        }
     }
 
     pub fn is_on_cooldown(&self, provider_name: &str) -> bool {
         if let Some(entry) = self.cooldowns.get(provider_name) {
-            if entry.elapsed().as_secs() < self.cooldown_duration_secs {
+            if entry.since.elapsed() < entry.duration {
                 return true;
             }
-            // Expired, remove it
             drop(entry);
             self.cooldowns.remove(provider_name);
         }
         false
+    }
+
+    pub fn clear_cooldown(&self, provider_name: &str) {
+        self.cooldowns.remove(provider_name);
     }
 
     /// Select a provider, skipping those on cooldown
@@ -55,7 +78,6 @@ impl LoadBalancer {
             }
         }
 
-        // All on cooldown — return the first one anyway
         Some(providers[start])
     }
 
@@ -74,9 +96,5 @@ impl LoadBalancer {
 
         Some(names[start].clone())
     }
-
-    /// Clear cooldown for a provider (called on success)
-    pub fn clear_cooldown(&self, provider_name: &str) {
-        self.cooldowns.remove(provider_name);
-    }
+}
 }
