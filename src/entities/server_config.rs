@@ -8,6 +8,7 @@ pub struct Model {
     pub id: i32,
     pub host: String,
     pub port: i32,
+    pub default_max_tokens: Option<i32>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

@@ -14,6 +14,7 @@ use sea_orm::{EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, Set, Mode
 use crate::server::app::AppState;
 use crate::types::openai::ModelInfo;
 use crate::auth::sha2_hex;
+use crate::provider::{KNOWN_PROVIDER_TYPES, category_to_str};
 
 // ─── Response types ──────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ pub struct ProviderStatus {
     pub name: String, pub provider_type: String, pub model_count: usize,
     pub color: String, pub request_count: u64, pub error_count: u64,
     pub avg_latency_ms: f64, pub healthy: bool,
+    pub category: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -46,6 +48,7 @@ pub struct LiveMetrics {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProviderResponse {
     pub id: String, pub name: String, pub provider_type: String,
+    pub category: String,
     pub api_key: String, pub base_url: String,
     pub models: Vec<String>, pub capabilities: Vec<String>,
     pub enabled: bool, pub created_at: String,
@@ -71,7 +74,7 @@ pub struct SettingsResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ServerSettingsResponse { pub host: String, pub port: i32 }
+pub struct ServerSettingsResponse { pub host: String, pub port: i32, pub default_max_tokens: Option<i32> }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RateLimitSettingsResponse {
@@ -132,7 +135,7 @@ pub struct UpdateSettingsRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ServerSettingsUpdate { pub host: Option<String>, pub port: Option<i32> }
+pub struct ServerSettingsUpdate { pub host: Option<String>, pub port: Option<i32>, pub default_max_tokens: Option<Option<i32>> }
 
 #[derive(Debug, Deserialize)]
 pub struct RateLimitSettingsUpdate {
@@ -149,15 +152,40 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/api/metrics", get(handle_provider_metrics))
         // Providers CRUD
         .route("/api/dashboard/providers", get(list_providers).post(create_provider))
-        .route("/api/dashboard/providers/:id", get(get_provider).put(update_provider).delete(delete_provider))
+        .route("/api/dashboard/providers/{id}", get(get_provider).put(update_provider).delete(delete_provider))
+        // Provider types reference
+        .route("/api/dashboard/provider-types", get(handle_provider_types))
         // Routes CRUD
         .route("/api/dashboard/routes", get(list_routes).post(create_route))
-        .route("/api/dashboard/routes/:id", get(get_route).put(update_route).delete(delete_route))
+        .route("/api/dashboard/routes/{id}", get(get_route).put(update_route).delete(delete_route))
         // API Keys CRUD
         .route("/api/dashboard/api-keys", get(list_api_keys).post(create_api_key))
-        .route("/api/dashboard/api-keys/:id", delete(delete_api_key))
+        .route("/api/dashboard/api-keys/{id}", delete(delete_api_key))
         // Settings
         .route("/api/dashboard/settings", get(get_settings).put(update_settings))
+}
+
+// ─── Provider Types reference ────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct ProviderTypeInfo {
+    pub id: String,
+    pub display_name: String,
+    pub category: String,
+    pub category_label: String,
+    pub needs_api_key: bool,
+}
+
+async fn handle_provider_types() -> Json<Vec<ProviderTypeInfo>> {
+    Json(KNOWN_PROVIDER_TYPES.iter().map(|(id, display, cat)| {
+        ProviderTypeInfo {
+            id: id.to_string(),
+            display_name: display.to_string(),
+            category: category_to_str(*cat).to_string(),
+            category_label: cat.display_name().to_string(),
+            needs_api_key: cat.needs_api_key(),
+        }
+    }).collect())
 }
 
 // ─── Dashboard handlers ──────────────────────────────────────────
@@ -174,13 +202,15 @@ async fn handle_dashboard(
         for provider in registry.all() {
             let cnt = provider.models().len();
             total_models += cnt;
-            let is_free = provider.provider_type() == "opencode_free" || provider.provider_type() == "mimo_free";
+            let ptype = provider.provider_type().to_string();
+            let cat = crate::provider::category_for_type(&ptype).unwrap_or(crate::provider::ProviderCategory::ApiKey);
             provider_names.push(provider.name().to_string());
             providers.push(ProviderStatus {
                 name: provider.name().to_string(),
-                provider_type: provider.provider_type().to_string(),
+                provider_type: ptype.clone(),
+                category: crate::provider::category_to_str(cat).to_string(),
                 model_count: cnt,
-                color: if is_free { "#2da44e".into() } else { "#58a6ff".into() },
+                color: cat.color().into(),
                 request_count: 0, error_count: 0, avg_latency_ms: 0.0, healthy: true,
             });
         }
@@ -273,6 +303,14 @@ async fn create_provider(
     Json(body): Json<CreateProviderRequest>,
 ) -> Result<(StatusCode, Json<ProviderResponse>), (StatusCode, Json<serde_json::Value>)> {
     use crate::entities::provider;
+
+    // Auto-fill base_url for known provider types if empty
+    let base_url = if body.base_url.is_empty() {
+        default_base_url(&body.provider_type)
+    } else {
+        body.base_url.clone()
+    };
+
     let extra = if body.extra_headers.is_null() { serde_json::Value::Object(Default::default()) } else { body.extra_headers };
 
     let model = provider::ActiveModel {
@@ -280,7 +318,7 @@ async fn create_provider(
         name: Set(body.name),
         provider_type: Set(body.provider_type),
         api_key: Set(body.api_key),
-        base_url: Set(body.base_url),
+        base_url: Set(base_url),
         models: Set(body.models),
         extra_headers: Set(extra),
         capabilities: Set(body.capabilities),
@@ -334,10 +372,15 @@ async fn delete_provider(
 }
 
 fn row_to_provider_response(row: crate::entities::provider::Model) -> ProviderResponse {
+    let cat = crate::provider::category_for_type(&row.provider_type)
+        .map(crate::provider::category_to_str)
+        .unwrap_or("unknown")
+        .to_string();
     ProviderResponse {
         id: row.id.to_string(),
         name: row.name,
         provider_type: row.provider_type,
+        category: cat,
         api_key: "[REDACTED]".into(),
         base_url: row.base_url,
         models: row.models,
@@ -513,6 +556,7 @@ async fn get_settings(
         .unwrap_or(None)
         .unwrap_or(server_config::Model {
             id: 1, host: "0.0.0.0".into(), port: 3000,
+            default_max_tokens: None,
             updated_at: chrono::Utc::now(),
         });
 
@@ -524,7 +568,7 @@ async fn get_settings(
         });
 
     Json(SettingsResponse {
-        server: ServerSettingsResponse { host: sc.host, port: sc.port },
+        server: ServerSettingsResponse { host: sc.host, port: sc.port, default_max_tokens: sc.default_max_tokens },
         rate_limit: RateLimitSettingsResponse {
             enabled: rl.enabled, requests_per_minute: rl.requests_per_minute,
             burst_size: rl.burst_size,
@@ -546,6 +590,11 @@ async fn update_settings(
             let mut model: server_config::ActiveModel = row.into();
             if let Some(v) = srv.host { model.host = Set(v); }
             if let Some(v) = srv.port { model.port = Set(v); }
+            if let Some(v) = srv.default_max_tokens {
+                // 0 or negative → clear (auto / no limit)
+                let val = if v.is_some_and(|n| n > 0) { v } else { None };
+                model.default_max_tokens = Set(val);
+            }
             model.updated_at = Set(chrono::Utc::now());
             model.update(&state.db).await.map_err(|e| err_400(&e.to_string()))?;
         }
@@ -566,6 +615,27 @@ async fn update_settings(
 
     state.reload_config().await.ok();
     Ok(get_settings(State(state)).await)
+}
+
+/// Known default base URLs for provider types.
+fn default_base_url(provider_type: &str) -> String {
+    match provider_type {
+        "openai" => "https://api.openai.com/v1".into(),
+        "anthropic" => "https://api.anthropic.com/v1".into(),
+        "deepseek" => "https://api.deepseek.com/v1".into(),
+        "openrouter" => "https://openrouter.ai/api/v1".into(),
+        "groq" => "https://api.groq.com/openai/v1".into(),
+        "gemini" => "https://generativelanguage.googleapis.com/v1beta".into(),
+        "ollama" => "http://localhost:11434/v1".into(),
+        "together" => "https://api.together.xyz/v1".into(),
+        "fireworks" => "https://api.fireworks.ai/inference/v1".into(),
+        "mistral" => "https://api.mistral.ai/v1".into(),
+        "cohere" => "https://api.cohere.ai/v1".into(),
+        "perplexity" => "https://api.perplexity.ai".into(),
+        "xai" => "https://api.x.ai/v1".into(),
+        "cloudflare" => "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1".into(),
+        _ => String::new(),
+    }
 }
 
 // ─── Error helpers ───────────────────────────────────────────────

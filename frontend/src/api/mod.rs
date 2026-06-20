@@ -20,6 +20,7 @@ pub struct ProviderStatus {
     pub error_count: u64,
     pub avg_latency_ms: f64,
     pub healthy: bool,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -53,12 +54,22 @@ pub struct ProviderDetail {
     pub id: String,
     pub name: String,
     pub provider_type: String,
+    pub category: String,
     pub api_key: String,
     pub base_url: String,
     pub models: Vec<String>,
     pub capabilities: Vec<String>,
     pub enabled: bool,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProviderTypeInfo {
+    pub id: String,
+    pub display_name: String,
+    pub category: String,
+    pub category_label: String,
+    pub needs_api_key: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -99,6 +110,7 @@ pub struct SettingsData {
 pub struct ServerSettingsData {
     pub host: String,
     pub port: i32,
+    pub default_max_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -161,6 +173,10 @@ pub async fn fetch_dashboard() -> Result<DashboardData, String> {
 }
 
 // ─── Providers CRUD ──────────────────────────────────────────────
+
+pub async fn fetch_provider_types() -> Result<Vec<ProviderTypeInfo>, String> {
+    api_request::<Vec<ProviderTypeInfo>>("GET", "/api/dashboard/provider-types", None).await
+}
 
 pub async fn fetch_providers() -> Result<Vec<ProviderDetail>, String> {
     api_request::<Vec<ProviderDetail>>("GET", "/api/dashboard/providers", None).await

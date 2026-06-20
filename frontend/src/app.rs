@@ -12,9 +12,9 @@ use crate::pages::api_keys::ApiKeys;
 pub fn App() -> impl IntoView {
     view! {
         <Router>
-            <div class="app-layout">
+            <div class="flex min-h-screen bg-surface text-primary">
                 <Sidebar/>
-                <main class="main-content">
+                <main class="flex-1 p-8 overflow-y-auto">
                     <Routes>
                         <Route path="/" view= Dashboard/>
                         <Route path="/providers" view= Providers/>
@@ -22,7 +22,12 @@ pub fn App() -> impl IntoView {
                         <Route path="/api-keys" view= ApiKeys/>
                         <Route path="/analytics" view= Analytics/>
                         <Route path="/settings" view= Settings/>
-                        <Route path="/*" view= || view! { <h1>"Not Found"</h1> }/>
+                        <Route path="/*" view= || view! {
+                            <div class="flex flex-col items-center justify-center mt-20 text-center">
+                                <h1 class="text-4xl font-bold text-muted">"404"</h1>
+                                <p class="text-secondary mt-2">"Page not found"</p>
+                            </div>
+                        }/>
                     </Routes>
                 </main>
             </div>

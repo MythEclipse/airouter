@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     middleware::{from_fn, from_fn_with_state},
     response::{IntoResponse, Json, Response},
     routing::get,
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 use crate::auth::middleware::auth_middleware;
 use crate::provider;
@@ -45,7 +45,9 @@ pub fn create_router(
         .layer(from_fn(request_id_middleware))
         .merge(api_routes)
         .fallback_service(
-            ServeDir::new(FRONTEND_DIST).append_index_html_on_directories(true)
+            ServeDir::new(FRONTEND_DIST)
+                .append_index_html_on_directories(true)
+                .fallback(ServeFile::new(format!("{}/index.html", FRONTEND_DIST)))
         )
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

@@ -170,10 +170,19 @@ impl RouteEngine {
 
     pub async fn dispatch(
         &self,
-        request: ChatCompletionRequest,
+        mut request: ChatCompletionRequest,
         is_stream: bool,
         tracker: &RequestTracker,
     ) -> Result<Response, DispatchError> {
+        // Inject default_max_tokens from server config if request doesn't set it
+        if request.max_tokens.is_none() {
+            let settings = self.config.load();
+            if let Some(mt) = settings.server.default_max_tokens {
+                request.max_tokens = Some(mt);
+            }
+            drop(settings);
+        }
+
         let model = request.model.clone();
         let capabilities = Self::detect_capabilities(&request);
         let provider_names = self.get_provider_names(&model, &capabilities).await?;

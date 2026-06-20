@@ -6,7 +6,7 @@ use crate::provider::{Provider, ProviderError, ProviderStream};
 use crate::types::openai::*;
 
 /// OpenCode Free — no API key required
-/// Uses `Authorization: Bearer public` + `x-opencode-client: desktop`
+/// Uses `x-opencode-client: desktop` header only (no Bearer token)
 /// Endpoint: https://opencode.ai/zen/v1
 /// Models fetched dynamically from https://opencode.ai/zen/v1/models
 pub struct OpenCodeFreeProvider {
@@ -26,7 +26,6 @@ impl OpenCodeFreeProvider {
 
     fn build_headers(&self) -> reqwest::header::HeaderMap {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Authorization", "Bearer public".parse().unwrap());
         headers.insert("x-opencode-client", "desktop".parse().unwrap());
         headers
     }

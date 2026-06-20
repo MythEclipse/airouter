@@ -14,111 +14,87 @@
 - Build: Trunk → `cd frontend && trunk build --dist ../frontend-dist`
 - Entry point: `lib.rs` with `#[wasm_bindgen(start)] pub fn main()`
 
-## Key Fixes & Lessons
+### Database: PostgreSQL + Redis
+- **Single source of truth**: Semua provider, routes, API keys, settings dari PostgreSQL
+- **No YAML config untuk providers** — `config.yaml` hanya berisi server + rate_limit
+- **No env var untuk API key** — semua diisi via Dashboard UI
+- Redis: cooldown management, round-robin counters, request tracking
 
-### 1. WASM Entry Point
-**❌ Yang salah:** `fn main()` di `main.rs` dengan `crate-type = ["cdylib", "rlib"]`
-- Trunk build **lib** target (cdylib), bukan **bin** target
-- WASM file hash tidak pernah berubah karena lib target tidak punya `main()`
-- WASM loaded (`wasmBindings: true`) tapi blank karena `main()` tidak pernah dipanggil
+## Pola Pikir — Provider System
 
-**✅ Solusi:** 
-- Hapus `main.rs`, taruh semua di `lib.rs`
-- Pakai `#[wasm_bindgen(start)] pub fn main()` di `lib.rs`
-- `autobins = false` di Cargo.toml biar cargo tidak auto-detect `main.rs` sebagai bin
+### 1. Provider punya kategori, bukan hanya string type
+Setiap provider type masuk kategori: `Free`, `FreeTier`, `ApiKey`, `OAuth`, `WebCookie`.  
+Ini menentukan apakah perlu API key, apakah gratis, warna badge di UI, dan field apa yang ditampilkan di form.
 
-### 2. Leptos 0.6 vs 0.7 API
-**❌ Yang salah:** Pakai `view! { cx, ... }` atau `use leptos::prelude::*` (Leptos 0.7 API)
+Kategori ditentukan oleh **siapa yang menyediakan**, bukan apa yang bisa dilakukan.  
+Contoh: `groq` itu FreeTier walaupun pake format OpenAI.
 
-**✅ Solusi:** Leptos 0.6:
-- `view! { ... }` — tanpa `cx` parameter
-- `mount_to_body(|| view! { <App/> })` — tanpa `cx` di closure
-- `#[component] fn Name() -> impl IntoView` — tanpa `cx: Scope`
-- `use leptos::*;` bukan `leptos::prelude`
-- `leptos_router` CSR dengan `features = ["csr"]`
+Implementasi:
+- `KNOWN_PROVIDER_TYPES` table di `src/provider/mod.rs` — mapping type → display name → category
+- `ProviderRegistry.categories` — per-provider-name lookup
+- Frontend fetch `/api/dashboard/provider-types` untuk dropdown terkategori
 
-### 3. Auth Middleware Placement
-**❌ Yang salah:** `router.layer(auth_middleware)` membungkus SEMUA request termasuk yang tidak match (menyebabkan frontend kena auth)
+### 2. Provider hidup di DB, bukan YAML atau env
+YAML hanya untuk `server` dan `rate_limit`. Provider dan routes:
+- Seed otomatis saat pertama startup (`seed_defaults()`)
+- **Upsert setiap restart** — update model/url/strategi dari seed, tapi `api_key` kustom tetap aman
+- User manage via Dashboard UI → CRUD API → DB
+- `load_config_from_db()` adalah satu-satunya source untuk runtime
 
-**✅ Solusi:** Pakai `route_layer()` pada sub-router API, bukan `layer()`:
-```rust
-api_routes.route_layer(from_fn_with_state(state, auth_middleware))
-```
-Auth middleware otomatis skip request yang tidak match route di sub-router itu.
+### 3. Auth tiap provider berbeda — jangan asumsi
+Free provider auth caranya beda-beda. Jangan nebak — baca implementasi nyata:
 
-### 4. Frontend Auth Bypass
-**❌ Yang salah:** Auth middleware nangkep request ke static files dan fallback_service karena ditempatkan terlalu tinggi di router chain.
+| Provider | Auth Method | Header |
+|----------|------------|--------|
+| OpenCode Free | No Bearer | `x-opencode-client: desktop` |
+| MiMo Free | JWT bootstrap | `Authorization: Bearer {jwt}`, `X-Mimo-Source: mimocode-cli-free` |
+| OpenAI | API key | `Authorization: Bearer {key}` |
+| Anthropic | API key | `x-api-key {key}` |
 
-**✅ Solusi:** Pisahkan routing:
-```rust
-Router::new()
-    .merge(api_routes.route_layer(auth))  // API → auth
-    .fallback_service(ServeDir::new("frontend-dist")) // static → no auth
-```
+### 4. Router fallback — jangan hubungkan ke provider yg beda tipe
+Route `mimo-auto` cuma di `mimo`, bukan `opencode` atau `groq`. Route `north-mini-code-free` cuma di `opencode`, bukan yang lain.  
+Setiap model hanya terhubung ke provider yang benar-benar bisa handle model itu.
 
-### 5. CSS Not Copied
-**❌ Yang salah:** Trunk tidak otomatis copy `style/` directory. CSS 404.
+### 5. Default seed harus selalu sinkron dengan kode
+Saat code di-update (model baru, endpoint baru), seed harus mengikut.  
+Tapi data kustom (api_key user, route custom) harus tetap.  
+**Upsert by name** — `existing ? update : insert` — api_key tidak di-update dari seed.
 
-**✅ Solusi:** Manual copy setelah trunk build:
-```bash
-cp -r frontend/style frontend-dist/style
-```
+## Provider Types Reference
 
-### 6. WASM Cache Issue
-**❌ Yang salah:** `cargo clean` di root project tidak membersihkan `frontend/target/`. Build tetap dari cache.
-
-**✅ Solusi:** Hapus manual `frontend/target/` atau `rm -rf frontend/target` kalau wasm build aneh.
-
-### 7. Module `components` Namespace Conflict
-**❌ Yang salah:** `use leptos_router::components::A;` conflict dengan `src/components/` module lokal.
-
-**✅ Solusi:** Import langsung: `use leptos_router::A;` (tanpa `components::`)
-
-### 8. Request `body` Moved After Primary Provider Call
-**❌ Yang salah:** Fallback loop pake `body.clone()` tapi body sudah move ke primary provider.
-
-**✅ Solusi:** Clone sebelum panggil provider pertama, atau restructure fallback logic.
-
-### 9. Env Var Resolution di Config
-**❌ Yang salah:** `Settings::from_file()` tidak resolve `${VAR}` untuk `api_key` fields.
-
-**✅ Solusi:** Loop semua provider setelah deserialize, panggil `resolve_env()` untuk setiap `api_key`.
-
-### 10. Google Fonts / External Resources Not Blocked
-Headless Chromium di environment terbatas kadang gagal load external resources. Pastikan semua resource self-hosted.
+| Type | Category | Auth | Default Endpoint | Models (seed) |
+|------|----------|------|-----------------|---------------|
+| `opencode_free` | Free | `x-opencode-client: desktop` | `opencode.ai/zen/v1` | `deepseek-v4-flash-free`, `mimo-v2.5-free`, `nemotron-3-ultra-free`, `north-mini-code-free` |
+| `mimo_free` | Free | JWT bootstrap | `api.xiaomimimo.com/api/free-ai` | `mimo-auto` |
+| `gemini` | Free Tier | API key | `generativelanguage.googleapis.com/v1beta` | Gemini Pro/Flash |
+| `groq` | Free Tier | API key | `api.groq.com/openai/v1` | Llama, Mixtral, DeepSeek |
+| `openai` | ApiKey | `Bearer {key}` | `api.openai.com/v1` | GPT-4o, o3, o4-mini |
+| `anthropic` | ApiKey | `x-api-key {key}` | `api.anthropic.com/v1` | Claude Sonnet/Opus/Haiku |
+| `deepseek` | ApiKey | `Bearer {key}` | `api.deepseek.com/v1` | DeepSeek Chat/Reasoner |
+| `openrouter` | ApiKey | `Bearer {key}` | `openrouter.ai/api/v1` | Multi-model access |
+| `ollama` | ApiKey | optional | `localhost:11434/v1` | Local models |
 
 ## Build Commands
 
 ```bash
 # Backend
 cargo build --release           # production
-cargo build                     # debug
 cargo run                       # dev server
 
 # Frontend
 cd frontend && trunk build --dist ../frontend-dist   # CSR build
-cd frontend && trunk serve --dist ../frontend-dist   # dev with proxy
 
 # Full run
 ./start.sh                      # build backend + frontend + run
-make run                        # same thing
-make dev                        # cargo run only (no frontend build)
 
 # Tests
-cargo test                      # 87 unit tests
-bash test.sh                    # 23 shell integration tests
-cd e2e && node test.mjs         # 25 Playwright E2E tests
-make test-all                   # all tests
+cargo test                      # 61 unit + integration tests
 ```
 
-## Provider Types
+## Database
 
-| Type | Auth | Endpoint |
-|------|------|----------|
-| `openai` | `Bearer ${key}` | `https://api.openai.com/v1` |
-| `anthropic` | `x-api-key ${key}` | `https://api.anthropic.com/v1` |
-| `opencode_free` | `Bearer public` + `x-opencode-client` | `https://opencode.ai/zen/v1` |
-| `mimo_free` | JWT bootstrap | `https://api.xiaomimimo.com/api/free-ai` |
-| `openai_compat` | `Bearer ${key}` or none | user-defined |
+Tables: `providers`, `routes`, `api_keys`, `server_config`, `rate_limit_config`
 
-Free providers (opencode, mimo) built-in — zero config needed.
+Migration: `migrations/001_initial.sql`
+
+Seed: `config::db::seed_defaults()` — upsert by name, api_key user tidak dihapus.

@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::api::{fetch_dashboard, ProviderStatus, MetricsData, LiveMetrics};
+use crate::components::skeleton::SkeletonCards;
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
@@ -18,58 +19,80 @@ pub fn Dashboard() -> impl IntoView {
     });
 
     view! {
-        <div class="dashboard">
-            <h1>"Dashboard"</h1>
-            {move || loading.get().then(|| view! { <p class="loading">"Loading dashboard..."</p> })}
+        <div class="animate-fade-in">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h1 class="text-2xl font-bold text-primary">"Dashboard"</h1>
+                    <p class="text-sm text-secondary mt-1">"System overview and provider health"</p>
+                </div>
+            </div>
+
+            {move || loading.get().then(|| view! { <SkeletonCards count=4/> })}
 
             {move || (!loading.get()).then(|| {
                 let tp = metrics.with(|m| m.total_providers);
                 let tm = metrics.with(|m| m.total_models);
                 let tq = live.with(|m| m.total_requests);
+                let lat = live.with(|m| format!("{:.1}ms", m.avg_latency_ms));
                 let er = live.with(|m| format!("{:.1}%", m.error_rate * 100.0));
+                let upt = live.with(|m| {
+                    let h = m.uptime_seconds / 3600;
+                    let m2 = (m.uptime_seconds % 3600) / 60;
+                    format!("{}h {}m", h, m2)
+                });
                 let provs = providers.get();
 
                 view! {
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <h3>"Providers"</h3>
-                            <div class="metric-value">{tp.to_string()}</div>
-                            <div class="metric-subtitle">"Registered"</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Providers"</p>
+                            <p class="text-2xl font-bold text-primary">{tp.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Registered"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Models"</h3>
-                            <div class="metric-value">{tm.to_string()}</div>
-                            <div class="metric-subtitle">"Available"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Models"</p>
+                            <p class="text-2xl font-bold text-primary">{tm.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Available"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Requests"</h3>
-                            <div class="metric-value">{tq.to_string()}</div>
-                            <div class="metric-subtitle">"Total processed"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Requests"</p>
+                            <p class="text-2xl font-bold text-primary">{tq.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Total processed"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Error Rate"</h3>
-                            <div class="metric-value">{er}</div>
-                            <div class="metric-subtitle">"Across all providers"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Latency"</p>
+                            <p class="text-2xl font-bold text-primary">{lat}</p>
+                            <p class="text-xs text-muted mt-1">"Average"</p>
+                        </div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Error Rate"</p>
+                            <p class="text-2xl font-bold text-primary">{er}</p>
+                            <p class="text-xs text-muted mt-1">"Across all providers"</p>
                         </div>
                     </div>
 
-                    <h2>"Providers"</h2>
-                    <div class="provider-grid">
+                    <h2 class="text-lg font-semibold text-primary mb-4">"Providers"</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in-up">
                         {provs.into_iter().map(|p| {
-                            let health = if p.healthy { "healthy" } else { "degraded" };
+                            let color = p.color.clone();
+                            let health = if p.healthy { "Healthy" } else { "Degraded" };
+                            let health_color = if p.healthy { "text-success" } else { "text-warning" };
                             view! {
-                                <div class="provider-card" style=format!("border-left-color: {}", p.color)>
-                                    <div class="provider-status">
-                                        <span class="status-dot" style=format!("background-color: {}", p.color)></span>
-                                        <span class="provider-name">{p.name}</span>
+                                <div class="bg-surface-alt border-l-4 border-surface
+                                            rounded-xl p-5 hover:border-l-accent
+                                            transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+                                    style=format!("border-left-color: {}", color)>
+                                    <div class="flex items-center gap-2.5 mb-3">
+                                        <span class="w-3 h-3 rounded-full inline-block" style=format!("background-color: {}", color)></span>
+                                        <span class="font-semibold text-sm text-primary">{p.name}</span>
                                     </div>
-                                    <div class="provider-details">
-                                        <span class="model-count">{p.model_count.to_string() + " models"}</span>
-                                        <span>{health}</span>
+                                    <div class="flex items-center justify-between text-xs mb-2">
+                                        <span class="text-secondary">{p.model_count.to_string() + " models"}</span>
+                                        <span class=format!("font-medium {}", health_color)>{health}</span>
                                     </div>
-                                    <div class="provider-stats">
-                                        <span>"reqs: " {p.request_count.to_string()}</span>
-                                        <span>" errs: " {p.error_count.to_string()}</span>
+                                    <div class="flex gap-4 text-xs text-muted">
+                                        <span>"Reqs: " {p.request_count.to_string()}</span>
+                                        <span>"Errs: " {p.error_count.to_string()}</span>
                                     </div>
                                 </div>
                             }

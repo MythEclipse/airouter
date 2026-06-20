@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -63,19 +62,34 @@ pub struct Settings {
     pub rate_limit: RateLimitConfig,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-pub struct ServerConfig {
-    pub host: String,
-    pub port: u16,
-}
-
-impl Default for ServerConfig {
+impl Default for Settings {
     fn default() -> Self {
-        Self { host: "0.0.0.0".into(), port: 3000 }
+        Self {
+            server: ServerConfig::default(),
+            default_strategy: None,
+            keys: vec![],
+            providers: vec![],
+            routes: vec![],
+            rate_limit: RateLimitConfig::default(),
+        }
     }
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub default_max_tokens: Option<u32>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self { host: "0.0.0.0".into(), port: 3000, default_max_tokens: None }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProviderConfig {
     pub name: String,
     #[serde(rename = "type")]
@@ -139,20 +153,22 @@ impl Default for RateLimitConfig {
 /// Default API key used when seeding the database
 pub const DEFAULT_KEY: &str = "sk-test-abc123";
 
-/// Free built-in providers — always available, no config needed.
-pub fn builtin_providers() -> Vec<ProviderConfig> {
+/// Default seed providers — one entry per known provider type.
+/// Free providers (opencode_free, mimo_free) have empty api_key + base_url (hardcoded at runtime).
+/// Paid providers use empty api_key (filled via dashboard) with known default base_url.
+pub fn default_providers() -> Vec<ProviderConfig> {
     vec![
+        // ── FREE (no auth) ──────────────────────────────────────
         ProviderConfig {
             name: "opencode".into(),
             provider_type: "opencode_free".into(),
             api_key: String::new(),
-            base_url: String::new(),
+            base_url: String::new(),  // hardcoded in provider impl
             models: vec![
-                "kimi-k2.6".into(), "kimi-k2.5".into(),
-                "glm-5.1".into(), "glm-5".into(),
-                "qwen3.5-plus".into(), "qwen3.6-plus".into(),
-                "mimo-v2-pro".into(), "mimo-v2-omni".into(),
-                "minimax-m2.7".into(), "minimax-m2.5".into(),
+                "deepseek-v4-flash-free".into(),
+                "mimo-v2.5-free".into(),
+                "nemotron-3-ultra-free".into(),
+                "north-mini-code-free".into(),
             ],
             extra_headers: HashMap::new(),
             capabilities: vec!["vision".into()],
@@ -161,85 +177,142 @@ pub fn builtin_providers() -> Vec<ProviderConfig> {
             name: "mimo".into(),
             provider_type: "mimo_free".into(),
             api_key: String::new(),
-            base_url: String::new(),
+            base_url: String::new(),  // hardcoded in provider impl
             models: vec![
-                "mimo-v2.5-pro".into(), "mimo-v2.5".into(),
-                "mimo-v2-omni".into(), "mimo-v2-flash".into(),
+                "mimo-auto".into(),
             ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        // ── FREE TIER ────────────────────────────────────────────
+        ProviderConfig {
+            name: "gemini".into(),
+            provider_type: "gemini".into(),
+            api_key: String::new(),
+            base_url: "https://generativelanguage.googleapis.com/v1beta".into(),
+            models: vec![
+                "gemini-2.5-pro-exp-03-25".into(),
+                "gemini-2.0-flash".into(),
+                "gemini-1.5-flash".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
+        },
+        ProviderConfig {
+            name: "groq".into(),
+            provider_type: "groq".into(),
+            api_key: String::new(),
+            base_url: "https://api.groq.com/openai/v1".into(),
+            models: vec![
+                "llama-3.3-70b-versatile".into(),
+                "llama-3.1-8b-instant".into(),
+                "mixtral-8x7b-32768".into(),
+                "deepseek-r1-distill-llama-70b".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        // ── API KEY ──────────────────────────────────────────────
+        ProviderConfig {
+            name: "openai".into(),
+            provider_type: "openai".into(),
+            api_key: String::new(),
+            base_url: "https://api.openai.com/v1".into(),
+            models: vec![
+                "gpt-4o".into(), "gpt-4o-mini".into(),
+                "o3".into(), "o4-mini".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into(), "audio".into()],
+        },
+        ProviderConfig {
+            name: "anthropic".into(),
+            provider_type: "anthropic".into(),
+            api_key: String::new(),
+            base_url: "https://api.anthropic.com/v1".into(),
+            models: vec![
+                "claude-sonnet-4-20250514".into(),
+                "claude-3-5-sonnet-20241022".into(),
+                "claude-3-haiku-20240307".into(),
+                "claude-opus-4-20250514".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
+        },
+        ProviderConfig {
+            name: "deepseek".into(),
+            provider_type: "deepseek".into(),
+            api_key: String::new(),
+            base_url: "https://api.deepseek.com/v1".into(),
+            models: vec!["deepseek-chat".into(), "deepseek-reasoner".into()],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "openrouter".into(),
+            provider_type: "openrouter".into(),
+            api_key: String::new(),
+            base_url: "https://openrouter.ai/api/v1".into(),
+            models: vec![
+                "openai/gpt-4o".into(),
+                "anthropic/claude-sonnet-4".into(),
+                "google/gemini-2.0-flash".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "ollama".into(),
+            provider_type: "ollama".into(),
+            api_key: String::new(),
+            base_url: "http://localhost:11434/v1".into(),
+            models: vec!["llama3.2".into(), "mistral".into()],
             extra_headers: HashMap::new(),
             capabilities: Vec::new(),
         },
     ]
 }
 
-/// Free built-in routes — always available.
-pub fn builtin_routes() -> Vec<RouteConfig> {
+/// Default seed routes — one per model in default_providers, plus wildcard.
+pub fn default_routes() -> Vec<RouteConfig> {
     vec![
-        RouteConfig { model: "kimi-k2.6".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "kimi-k2.5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "glm-5.1".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "glm-5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "qwen3.5-plus".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "qwen3.6-plus".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "mimo-v2-pro".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "mimo-v2-omni".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "minimax-m2.7".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "minimax-m2.5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
-        RouteConfig { model: "mimo-v2.5-pro".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
-        RouteConfig { model: "mimo-v2.5".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
-        RouteConfig { model: "mimo-v2-flash".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
+        // OpenCode Free models
+        RouteConfig { model: "deepseek-v4-flash-free".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2.5-free".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "nemotron-3-ultra-free".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "north-mini-code-free".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        // MiMo Free models
+        RouteConfig { model: "mimo-auto".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
+        // Gemini models
+        RouteConfig { model: "gemini-2.5-pro-exp-03-25".into(), strategy: StrategyKind::Single, provider: Some("gemini".into()), providers: None, combo: None },
+        RouteConfig { model: "gemini-2.0-flash".into(), strategy: StrategyKind::Single, provider: Some("gemini".into()), providers: None, combo: None },
+        // OpenAI models
+        RouteConfig { model: "gpt-4o".into(), strategy: StrategyKind::Fallback, provider: None, providers: Some(vec!["openai".into(), "opencode".into()]), combo: None },
+        RouteConfig { model: "gpt-4o-mini".into(), strategy: StrategyKind::Single, provider: Some("openai".into()), providers: None, combo: None },
+        // Anthropic models
+        RouteConfig { model: "claude-sonnet-4-20250514".into(), strategy: StrategyKind::Single, provider: Some("anthropic".into()), providers: None, combo: None },
+        RouteConfig { model: "claude-3-5-sonnet-20241022".into(), strategy: StrategyKind::Single, provider: Some("anthropic".into()), providers: None, combo: None },
+        // DeepSeek
+        RouteConfig { model: "deepseek-chat".into(), strategy: StrategyKind::Single, provider: Some("deepseek".into()), providers: None, combo: None },
+        // Groq
+        RouteConfig { model: "llama-3.3-70b-versatile".into(), strategy: StrategyKind::Single, provider: Some("groq".into()), providers: None, combo: None },
+        // Ollama
+        RouteConfig { model: "llama3.2".into(), strategy: StrategyKind::Single, provider: Some("ollama".into()), providers: None, combo: None },
+        // Wildcard
+        RouteConfig { model: "*".into(), strategy: StrategyKind::Fallback, provider: None, providers: Some(vec!["opencode".into(), "groq".into(), "ollama".into()]), combo: None },
     ]
 }
 
 impl Settings {
-    pub fn from_file(path: &str) -> Result<Self, anyhow::Error> {
-        let contents = fs::read_to_string(path)?;
-        let mut settings: Settings = serde_yaml::from_str(&contents)?;
-        for provider in &mut settings.providers {
-            provider.api_key = resolve_env(&provider.api_key);
-        }
-        // Merge built-in free providers
-        for bp in builtin_providers() {
-            if !settings.providers.iter().any(|p| p.name == bp.name) {
-                settings.providers.insert(0, bp);
-            }
-        }
-        // Merge built-in free routes
-        for br in builtin_routes() {
-            if !settings.routes.iter().any(|r| r.model == br.model) {
-                settings.routes.push(br);
-            }
-        }
-        Ok(settings)
-    }
-
-    pub fn default_builtins() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            default_strategy: None,
-            keys: vec!["sk-test-abc123".into()],
-            providers: builtin_providers(),
-            routes: builtin_routes(),
-            rate_limit: RateLimitConfig::default(),
-        }
-    }
-
     pub fn load(path: &str) -> Result<Self, anyhow::Error> {
-        if fs::metadata(path).is_ok() {
-            Self::from_file(path)
-        } else {
-            tracing::warn!(path = %path, "Config file not found, using built-in free providers");
-            Ok(Self::default_builtins())
-        }
-    }
-}
-
-fn resolve_env(val: &str) -> String {
-    if val.starts_with("${") && val.ends_with("}") {
-        let var = &val[2..val.len()-1];
-        std::env::var(var).unwrap_or_default()
-    } else {
-        val.to_string()
+        // Load only the YAML for server/rate_limit/config — NOT providers/routes
+        let contents = std::fs::read_to_string(path)
+            .map_err(|_| anyhow::anyhow!("Config file not found: {}", path))?;
+        let mut settings: Settings = serde_yaml::from_str(&contents)?;
+        // Providers and routes come from DB, not from YAML
+        settings.providers = Vec::new();
+        settings.routes = Vec::new();
+        Ok(settings)
     }
 }
 
@@ -248,35 +321,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_resolve_env() {
-        std::env::set_var("TEST_VAR_123", "hello");
-        assert_eq!(resolve_env("${TEST_VAR_123}"), "hello");
-        assert_eq!(resolve_env("literal-key"), "literal-key");
-        assert_eq!(resolve_env(""), "");
-    }
-
-    #[test]
     fn test_default_settings() {
-        let s = Settings::default_builtins();
+        let s = Settings::default();
         assert_eq!(s.server.port, 3000);
-        assert!(s.providers.iter().any(|p| p.name == "opencode"));
-        assert!(s.providers.iter().any(|p| p.name == "mimo"));
-        assert!(s.routes.iter().any(|r| r.model == "kimi-k2.6"));
-        assert!(s.routes.iter().any(|r| r.model == "mimo-v2.5-pro"));
     }
 
     #[test]
-    fn test_builtin_providers_count() {
-        let bp = builtin_providers();
-        assert_eq!(bp.len(), 2);
-        assert_eq!(bp[0].provider_type, "opencode_free");
-        assert_eq!(bp[1].provider_type, "mimo_free");
+    fn test_default_providers_count() {
+        let dp = default_providers();
+        assert_eq!(dp.len(), 9);
+        assert_eq!(dp[0].provider_type, "opencode_free");
+        assert_eq!(dp[1].provider_type, "mimo_free");
     }
 
     #[test]
-    fn test_builtin_routes_count() {
-        let br = builtin_routes();
-        assert_eq!(br.len(), 13);
+    fn test_default_routes_count() {
+        let dr = default_routes();
+        assert_eq!(dr.len(), 15);
     }
 
     #[test]
@@ -288,70 +349,13 @@ mod tests {
     }
 
     #[test]
-    fn test_server_config_default() {
-        let sc = ServerConfig::default();
-        assert_eq!(sc.host, "0.0.0.0");
-        assert_eq!(sc.port, 3000);
-    }
-
-    #[test]
-    fn test_strategy_kind_deserialize() {
-        let val: StrategyKind = serde_yaml::from_str("single").unwrap();
-        assert_eq!(val, StrategyKind::Single);
-        let val: StrategyKind = serde_yaml::from_str("fallback").unwrap();
-        assert_eq!(val, StrategyKind::Fallback);
-        let val: StrategyKind = serde_yaml::from_str("round-robin").unwrap();
-        assert_eq!(val, StrategyKind::RoundRobin);
-        let val: StrategyKind = serde_yaml::from_str("fusion").unwrap();
-        assert_eq!(val, StrategyKind::Fusion);
-    }
-
-    #[test]
-    fn test_route_config_with_combo() {
-        let yaml = r#"
-model: "test"
-strategy: fusion
-combo:
-  judge_model: "gpt-4o-mini"
-  min_panel: 2
-  straggler_grace_ms: 3000
-  panel_hard_timeout_ms: 15000
-providers:
-  - "openai"
-  - "anthropic"
-"#;
-        let route: RouteConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(route.strategy, StrategyKind::Fusion);
-        let combo = route.combo.unwrap();
-        assert_eq!(combo.judge_model, Some("gpt-4o-mini".into()));
-        assert_eq!(combo.min_panel, 2);
-    }
-
-    #[test]
-    fn test_provider_config_with_capabilities() {
-        let yaml = r#"
-name: "test"
-type: openai
-capabilities:
-  - "vision"
-  - "audio"
-models: []
-"#;
-        let pc: ProviderConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(pc.capabilities, vec!["vision", "audio"]);
-    }
-
-    #[test]
     fn test_effective_strategy_resolution() {
         let route_fallback = RouteConfig {
             model: "test".into(), strategy: StrategyKind::Fallback,
             provider: None, providers: None, combo: None,
         };
-        // Fallback route with no global → fallback
         assert_eq!(route_fallback.effective_strategy(None), StrategyKind::Fallback);
-        // Fallback route with global → global
         assert_eq!(route_fallback.effective_strategy(Some(&StrategyKind::RoundRobin)), StrategyKind::RoundRobin);
-        // Non-fallback route ignores global
         let route_fusion = RouteConfig {
             model: "test".into(), strategy: StrategyKind::Fusion,
             provider: None, providers: None, combo: None,

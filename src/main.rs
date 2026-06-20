@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tracing::info!("Starting AIRouter...");
 
-    // ── Load .env ───────────────────────────────────────────────────
+    // ── Load .env for DATABASE_URL only ─────────────────────────────
     dotenvy::dotenv().ok();
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set in .env or environment");
@@ -45,9 +45,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let redis_conn = redis::aio::ConnectionManager::new(redis_client).await?;
     tracing::info!("Redis connected");
 
-    // ── Load config from DB ─────────────────────────────────────────
-    let settings_from_db = config::db::load_config_from_db(&db).await?;
-    let settings = Arc::new(ArcSwap::new(Arc::new(settings_from_db)));
+    // ── Load config from DB (single source of truth) ────────────────
+    let settings = Arc::new(ArcSwap::new(Arc::new(
+        config::db::load_config_from_db(&db).await?
+    )));
     tracing::info!(providers = %settings.load().providers.len(), routes = %settings.load().routes.len(), "Configuration loaded from database");
 
     // ── Build provider registry ─────────────────────────────────────
@@ -83,16 +84,15 @@ async fn main() -> Result<(), anyhow::Error> {
         registry: registry.clone(),
         key_hashes: key_hashes.clone(),
         rate_limiter,
-        balancer: balancer.clone(),
-        engine: engine.clone(),
-        tracker: request_tracker.clone(),
+        balancer,
+        engine,
+        tracker: request_tracker,
         prometheus_handle,
     };
 
     let addr = format!("{}:{}", settings.load().server.host, settings.load().server.port);
     tracing::info!(addr = %addr, "Server listening");
 
-    // Build router with Arc-wrapped Settings for backward compat
     let app = server::app::create_router(
         app_state,
         settings.load_full(),

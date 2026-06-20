@@ -1,0 +1,14 @@
+{
+  "name": "airouter-frontend",
+  "private": true,
+  "scripts": {
+    "css": "npx @tailwindcss/cli -i style/input.css -o style/main.css",
+    "css:watch": "npx @tailwindcss/cli -i style/input.css -o style/main.css --watch",
+    "build": "npm run css && trunk build --dist ../frontend-dist --release",
+    "dev": "npm run css && trunk serve --dist ../frontend-dist"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.3.1",
+    "@tailwindcss/cli": "^4.3.1"
+  }
+}

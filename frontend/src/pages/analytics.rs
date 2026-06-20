@@ -1,5 +1,6 @@
 use leptos::*;
 use crate::api::{fetch_dashboard, MetricsData, LiveMetrics};
+use crate::components::skeleton::SkeletonCards;
 
 #[component]
 pub fn Analytics() -> impl IntoView {
@@ -22,10 +23,13 @@ pub fn Analytics() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <h1>"Analytics"</h1>
-            <p>"Gateway usage overview."</p>
-            {move || loading.get().then(|| view! { <p class="loading">"Loading analytics..."</p> })}
+        <div class="animate-fade-in">
+            <div class="mb-8">
+                <h1 class="text-2xl font-bold text-primary">"Analytics"</h1>
+                <p class="text-sm text-secondary mt-1">"Gateway usage overview"</p>
+            </div>
+
+            {move || loading.get().then(|| view! { <SkeletonCards count=4/> })}
 
             {move || (!loading.get()).then(|| {
                 let m = metrics.get();
@@ -33,51 +37,54 @@ pub fn Analytics() -> impl IntoView {
                 let fc = free_count.get();
                 let fm = free_models.get();
                 let f_pct = if m.total_models > 0 { (fm as f64 / m.total_models as f64 * 100.0) as u32 } else { 0 };
+                let upt = format!("{}h {}m", lv.uptime_seconds / 3600, (lv.uptime_seconds % 3600) / 60);
 
                 view! {
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <h3>"Total Providers"</h3>
-                            <div class="metric-value">{m.total_providers.to_string()}</div>
-                            <div class="metric-subtitle">"Configured"</div>
+                    <h2 class="text-lg font-semibold text-primary mb-4">"Providers & Models"</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Providers"</p>
+                            <p class="text-2xl font-bold text-primary">{m.total_providers.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Configured"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Total Models"</h3>
-                            <div class="metric-value">{m.total_models.to_string()}</div>
-                            <div class="metric-subtitle">"Available"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Models"</p>
+                            <p class="text-2xl font-bold text-primary">{m.total_models.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Available"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Free Models"</h3>
-                            <div class="metric-value">{f_pct.to_string() + "%"}</div>
-                            <div class="metric-subtitle">{fm.to_string() + " of " + &m.total_models.to_string() + " models"}</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Models"</p>
+                            <p class="text-2xl font-bold text-primary">{f_pct.to_string() + "%"}</p>
+                            <p class="text-xs text-muted mt-1">{fm.to_string() + " of " + &m.total_models.to_string() + " models"}</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Free Providers"</h3>
-                            <div class="metric-value">{fc.to_string()}</div>
-                            <div class="metric-subtitle">"Built-in"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Providers"</p>
+                            <p class="text-2xl font-bold text-primary">{fc.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Built-in"</p>
                         </div>
                     </div>
-                    <h2>"Live Metrics"</h2>
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <h3>"Total Requests"</h3>
-                            <div class="metric-value">{lv.total_requests.to_string()}</div>
-                            <div class="metric-subtitle">"Since start"</div>
+
+                    <h2 class="text-lg font-semibold text-primary mb-4">"Live Metrics"</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Requests"</p>
+                            <p class="text-2xl font-bold text-primary">{lv.total_requests.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">"Since start"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Errors"</h3>
-                            <div class="metric-value">{lv.total_errors.to_string()}</div>
-                            <div class="metric-subtitle">{format!("{:.1}%", lv.error_rate * 100.0)}</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Errors"</p>
+                            <p class="text-2xl font-bold text-primary">{lv.total_errors.to_string()}</p>
+                            <p class="text-xs text-muted mt-1">{format!("{:.1}% error rate", lv.error_rate * 100.0)}</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Avg Latency"</h3>
-                            <div class="metric-value">{format!("{:.0}ms", lv.avg_latency_ms)}</div>
-                            <div class="metric-subtitle">"Per request"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Avg Latency"</p>
+                            <p class="text-2xl font-bold text-primary">{format!("{:.0}ms", lv.avg_latency_ms)}</p>
+                            <p class="text-xs text-muted mt-1">"Per request"</p>
                         </div>
-                        <div class="metric-card">
-                            <h3>"Uptime"</h3>
-                            <div class="metric-value">{format!("{}s", lv.uptime_seconds)}</div>
-                            <div class="metric-subtitle">"Server running"</div>
+                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Uptime"</p>
+                            <p class="text-2xl font-bold text-primary">{upt}</p>
+                            <p class="text-xs text-muted mt-1">"Server running"</p>
                         </div>
                     </div>
                 }
