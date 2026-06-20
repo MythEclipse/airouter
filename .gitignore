@@ -1,0 +1,6 @@
+/target
+/frontend/target
+.env
+*.swp
+*.swo
+.DS_Store

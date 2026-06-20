@@ -1,0 +1,32 @@
+[package]
+name = "airouter"
+version = "0.1.0"
+edition = "2021"
+description = "AI Router — LLM Gateway Proxy with OpenAI & Anthropic compatible endpoints"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde_yaml = "0.9"
+uuid = { version = "1", features = ["v4"] }
+dashmap = "6"
+governor = "0.8"
+nonzero_ext = "0.3"
+anyhow = "1"
+thiserror = "2"
+futures = "0.3"
+tokio-stream = "0.1"
+async-trait = "0.1"
+bytes = "1"
+hostname = "0.4"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }

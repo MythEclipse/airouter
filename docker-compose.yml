@@ -1,0 +1,15 @@
+services:
+  airouter:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - AIROUTER_CONFIG=/etc/airouter/config.yaml
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
+      - MIMO_API_KEY=${MIMO_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    volumes:
+      - ./config.yaml:/etc/airouter/config.yaml
+    restart: unless-stopped
