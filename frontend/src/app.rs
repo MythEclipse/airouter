@@ -12,9 +12,9 @@ use crate::pages::api_keys::ApiKeys;
 pub fn App() -> impl IntoView {
     view! {
         <Router>
-            <div class="flex min-h-screen bg-surface text-primary">
+            <div class="flex min-h-screen bg-bg text-primary font-sans">
                 <Sidebar/>
-                <main class="flex-1 p-8 overflow-y-auto">
+                <main class="flex-1 p-8 lg:p-10 overflow-y-auto">
                     <Routes>
                         <Route path="/" view= Dashboard/>
                         <Route path="/providers" view= Providers/>

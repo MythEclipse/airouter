@@ -28,8 +28,8 @@ pub fn TagInput(
             <label class="block text-xs text-secondary mb-1.5 font-medium">
                 {label}
             </label>
-            <div class="flex flex-wrap gap-1.5 p-2.5 bg-[#0d1117] border border-surface rounded-lg
-                        focus-within:border-accent transition-colors duration-150 min-h-[42px]">
+            <div class="flex flex-wrap gap-1.5 p-2.5 bg-surface-2 border border-surface rounded-lg
+                        focus-within:border-accent transition-colors min-h-[42px]">
                 {move || tags.get().into_iter().enumerate().map(|(i, t)| {
                     view! {
                         <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium

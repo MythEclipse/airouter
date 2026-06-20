@@ -522,7 +522,8 @@ async fn create_api_key(
     };
     let row = model.insert(&state.db).await
         .map_err(|e| err_400(&format!("Insert failed: {}", e)))?;
-    state.reload_config().await.ok();
+    state.reload_key_hashes().await
+        .map_err(|e| err_500(&format!("Failed to reload key hashes: {}", e)))?;
 
     Ok((StatusCode::CREATED, Json(CreateApiKeyResponse {
         id: row.id.to_string(),
@@ -541,7 +542,8 @@ async fn delete_api_key(
         .map_err(|_| err_500("Database error"))?
         .ok_or_else(|| err_404("API key not found"))?;
     existing.delete(&state.db).await.map_err(|_| err_500("Delete failed"))?;
-    state.reload_config().await.ok();
+    state.reload_key_hashes().await
+        .map_err(|e| err_500(&format!("Failed to reload key hashes: {}", e)))?;
     Ok(StatusCode::NO_CONTENT)
 }
 

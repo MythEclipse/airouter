@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>AIRouter Dashboard</title>
-<link rel="modulepreload" href="/airouter-frontend-eca05ab50a702c71.js" crossorigin="anonymous" integrity="sha384-k6QT0ksSHa5xlVi62GWlt9eEnyXjxZkuALEyW7/XJ5sZr4ptNMjBXcRKqwaWLla+"><link rel="preload" href="/airouter-frontend-eca05ab50a702c71_bg.wasm" crossorigin="anonymous" integrity="sha384-w7YF68wpo7jiUYZfwPg/tKc9BIwiwwSTaIp+EnhpaJrxXlWRNSWoZfl5uApsKEx1" as="fetch" type="application/wasm"></head>
+    <title>AIRouter — AI Gateway</title>
+<link rel="modulepreload" href="/airouter-frontend-7dd6821e0af858d5.js" crossorigin="anonymous" integrity="sha384-PJwcBafOZEixNzosKoS5swgNPZxd7qeQ0dlikL7gBTypDuDu6Rp1nepTCzM/JVbl"><link rel="preload" href="/airouter-frontend-7dd6821e0af858d5_bg.wasm" crossorigin="anonymous" integrity="sha384-av2WnAnV48B66PQu+ULUHE30cfZm1x50WPJMD3QDJ1sWzdKjf7OtcnQZhhUY2o64" as="fetch" type="application/wasm"></head>
 <body>
     <div id="app"></div>
     
 <script type="module">
-import init, * as bindings from '/airouter-frontend-eca05ab50a702c71.js';
-const wasm = await init({ module_or_path: '/airouter-frontend-eca05ab50a702c71_bg.wasm' });
+import init, * as bindings from '/airouter-frontend-7dd6821e0af858d5.js';
+const wasm = await init({ module_or_path: '/airouter-frontend-7dd6821e0af858d5_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -19,6 +19,6 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-    <link rel="stylesheet" href="/main-d767ce361320f8bf.css" integrity="sha384-vmCYaZXtO1V8XT1c/6+umzHJGp9iunR++KmUZyKx/gzjK64dfEZ2VHv6BTFWnTKM"/>
+    <link rel="stylesheet" href="/main-64f6c030038f1b11.css" integrity="sha384-CAY9wPeyjhlvMNjotq9+UGVgSYBK1nkP08xtWzw6uscIELLJW2aTVjkeNHO/L+vv"/>
 </body>
 </html>

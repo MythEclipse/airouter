@@ -26,7 +26,7 @@ pub fn Providers() -> impl IntoView {
         async move {
             let url = "/api/dashboard/provider-types";
             let window = web_sys::window().unwrap();
-            let mut opts = web_sys::RequestInit::new();
+            let opts = web_sys::RequestInit::new();
             opts.set_method("GET");
             opts.set_mode(web_sys::RequestMode::Cors);
             let request = web_sys::Request::new_with_str_and_init(url, &opts).unwrap();
@@ -161,7 +161,7 @@ pub fn Providers() -> impl IntoView {
                         loading.set(true);
                         match fetch_providers().await {
                             Ok(data) => { providers.set(data); loading.set(false); }
-                            Err(e) => { error.set(e); loading.set(false); }
+                            Err(e) => error.set(e),
                         }
                     }
                     Err(e) => error.set(e),
@@ -173,12 +173,12 @@ pub fn Providers() -> impl IntoView {
     // ─── Category badge color helper ────────────────────────────────
     let category_badge = |cat: &str| -> (&'static str, &'static str) {
         match cat {
-            "free" => ("bg-green-500/10 text-green-400 border-green-500/30", "Free"),
-            "free-tier" => ("bg-purple-500/10 text-purple-400 border-purple-500/30", "Free Tier"),
-            "api-key" => ("bg-blue-500/10 text-blue-400 border-blue-500/30", "API Key"),
-            "oauth" => ("bg-orange-500/10 text-orange-400 border-orange-500/30", "OAuth"),
-            "web-cookie" => ("bg-pink-500/10 text-pink-400 border-pink-500/30", "Web Cookie"),
-            _ => ("bg-gray-500/10 text-gray-400 border-gray-500/30", "Unknown"),
+            "free" => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-[rgba(34,197,94,0.1)] text-success border-success/30", "Free"),
+            "free-tier" => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-[rgba(229,106,74,0.1)] text-accent border-accent/30", "Free Tier"),
+            "api-key" => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-[rgba(96,165,250,0.1)] text-[#60a5fa] border-[rgba(96,165,250,0.3)]", "API Key"),
+            "oauth" => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-[rgba(251,191,36,0.1)] text-warning border-warning/30", "OAuth"),
+            "web-cookie" => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-[rgba(239,68,68,0.1)] text-danger border-danger/30", "Web Cookie"),
+            _ => ("inline-flex px-2 py-0.5 text-xs font-medium rounded-lg border bg-gray-500/10 text-gray-400 border-gray-500/30", "Unknown"),
         }
     };
 
@@ -192,7 +192,7 @@ pub fn Providers() -> impl IntoView {
                 <button on:click=move|_|show_add_form()
                     class="px-4 py-2 text-sm font-medium rounded-lg text-white
                            bg-accent hover:bg-accent-hover
-                           transition-all duration-150 flex items-center gap-2">
+                           active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
@@ -208,12 +208,11 @@ pub fn Providers() -> impl IntoView {
             // ─── Delete Confirm Dialog ────────────────────────────
             {move || delete_id.get().map(|id| {
                 let name = providers.with(|p| p.iter().find(|x| x.id == id).map(|x| x.name.clone()).unwrap_or_default());
-                let id2 = id.clone();
                 let id3 = id.clone();
                 view! {
                     <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in"
                         on:click=move|_|delete_id.set(None)>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-6
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6
                                     w-full max-w-md mx-4 shadow-2xl animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-start gap-3 mb-4">
@@ -234,14 +233,14 @@ pub fn Providers() -> impl IntoView {
                             <div class="flex gap-2 justify-end">
                                 <button on:click=move|_|delete_id.set(None)
                                     class="px-4 py-2 text-sm font-medium rounded-lg
-                                           bg-surface-active text-primary
-                                           border border-surface
-                                           hover:bg-border transition-all duration-150">
+                                           bg-transparent border border-surface text-secondary
+                                           hover:text-primary hover:bg-surface-2
+                                           active:scale-[0.97] transition-all duration-150">
                                     "Cancel"
                                 </button>
                                 <button on:click=move|_|do_delete(id3.clone())
                                     class="px-4 py-2 text-sm font-medium rounded-lg text-white
-                                           bg-danger hover:bg-red-600 transition-all duration-150">
+                                           bg-danger hover:bg-red-600 active:scale-[0.97] transition-all duration-150">
                                     "Delete"
                                 </button>
                             </div>
@@ -254,11 +253,10 @@ pub fn Providers() -> impl IntoView {
             {move || show_form.get().then(|| {
                 let is_edit = edit_id.get().is_some();
                 let (free, free_tier, apikey) = type_groups.get();
-                let free_type = is_free_type.get();
                 view! {
                     <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[10vh] z-50 animate-fade-in"
                         on:click=move|_|show_form.set(false)>
-                        <div class="bg-surface-alt border border-surface rounded-xl
+                        <div class="bg-surface border border-border-subtle rounded-[14px]
                                     w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto shadow-2xl animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-center justify-between px-6 py-4 border-b border-surface">
@@ -278,7 +276,7 @@ pub fn Providers() -> impl IntoView {
                                     <input type="text" prop:value=form_name.get()
                                         placeholder="e.g. my-openai"
                                         on:input=move|ev|form_name.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary placeholder-muted
                                                focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
@@ -286,7 +284,7 @@ pub fn Providers() -> impl IntoView {
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Type"</label>
                                     <select prop:value=form_type.get()
                                         on:change=move|ev|form_type.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary
                                                focus:border-accent focus:outline-none transition-colors">
                                         <optgroup label="── Free (No Key) ──">
@@ -316,12 +314,12 @@ pub fn Providers() -> impl IntoView {
                                 // ── API Key field ─────────────────────────────
                                 {move || {
                                     let is_free = is_free_type.get();
-                                    (if is_free {
+                                    if is_free {
                                         view! {
                                             <div class="mb-4 opacity-50 pointer-events-none">
                                                 <label class="block text-xs text-secondary mb-1.5 font-medium">"API Key"</label>
                                                 <input type="text" disabled=true value="(no key needed)"
-                                                    class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-muted"/>
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/>
                                             </div>
                                         }.into_view()
                                     } else {
@@ -331,10 +329,10 @@ pub fn Providers() -> impl IntoView {
                                                 <input type="password" prop:value=form_key.get()
                                                     placeholder=if is_edit { "(unchanged on edit)" } else { "sk-..." }
                                                     on:input=move|ev|form_key.set(event_target_value(&ev))
-                                                    class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
                                             </div>
                                         }.into_view()
-                                    })
+                                    }
                                 }}
 
                                 // ── Base URL field ────────────────────────────
@@ -355,12 +353,12 @@ pub fn Providers() -> impl IntoView {
                                             }
                                         })
                                         .unwrap_or("https://api.example.com/v1");
-                                    (if is_free {
+                                    if is_free {
                                         view! {
                                             <div class="mb-4 opacity-50 pointer-events-none">
                                                 <label class="block text-xs text-secondary mb-1.5 font-medium">"Base URL"</label>
                                                 <input type="text" disabled=true value="(hardcoded)"
-                                                    class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-muted"/>
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/>
                                             </div>
                                         }.into_view()
                                     } else {
@@ -370,10 +368,10 @@ pub fn Providers() -> impl IntoView {
                                                 <input type="text" prop:value=form_url.get()
                                                     placeholder=placeholder
                                                     on:input=move|ev|form_url.set(event_target_value(&ev))
-                                                    class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
                                             </div>
                                         }.into_view()
-                                    })
+                                    }
                                 }}
 
                                 <TagInput label="Models (type + Enter or comma to add)".to_string() placeholder="e.g. gpt-4o".to_string() tags=form_models/>
@@ -382,15 +380,15 @@ pub fn Providers() -> impl IntoView {
                                 <div class="flex gap-3 justify-end mt-6 pt-4 border-t border-surface">
                                     <button on:click=move|_|show_form.set(false)
                                         class="px-4 py-2 text-sm font-medium rounded-lg
-                                               bg-surface-active text-primary
-                                               border border-surface
-                                               hover:bg-border transition-all duration-150">
+                                               bg-transparent border border-surface text-secondary
+                                               hover:text-primary hover:bg-surface-2
+                                               active:scale-[0.97] transition-all duration-150">
                                         "Cancel"
                                     </button>
                                     <button on:click=move|_|save() disabled=saving.get()
                                         class="px-4 py-2 text-sm font-medium rounded-lg text-white
                                                bg-accent hover:bg-accent-hover
-                                               disabled:opacity-50 transition-all duration-150 flex items-center gap-2">
+                                               disabled:opacity-50 active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
                                         {saving.get().then(|| view! { "Saving..." }).unwrap_or(view! { "Save" })}
                                     </button>
                                 </div>
@@ -405,10 +403,10 @@ pub fn Providers() -> impl IntoView {
                 let provs = providers.get();
                 let empty = provs.is_empty();
                 view! {
-                    <div class="bg-surface-alt border border-surface rounded-xl overflow-hidden animate-fade-in-up">
+                    <div class="bg-surface border border-border-subtle rounded-[14px] overflow-hidden animate-fade-in-up">
                         <table class="w-full">
                             <thead>
-                                <tr class="bg-surface-hover">
+                                <tr class="bg-surface-2">
                                     <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Name"</th>
                                     <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Type"</th>
                                     <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Category"</th>
@@ -418,12 +416,12 @@ pub fn Providers() -> impl IntoView {
                                     <th class="text-right px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Actions"</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-surface/50">
+                            <tbody class="divide-y divide-border-subtle/50">
                                 {provs.into_iter().map(|p| {
                                     let pid = p.id.clone();
                                     let (cb_cls, cb_label) = category_badge(&p.category);
                                     view! {
-                                        <tr class="hover:bg-surface-hover/50 transition-colors duration-100">
+                                        <tr class="hover:bg-surface-2/50 transition-colors duration-100">
                                             <td class="px-4 py-3 text-sm font-medium text-primary">{p.name.clone()}</td>
                                             <td class="px-4 py-3">
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-accent-bg text-accent border border-accent/30">
@@ -437,7 +435,7 @@ pub fn Providers() -> impl IntoView {
                                             <td class="px-4 py-3">
                                                 <div class="flex flex-wrap gap-1">
                                                     {p.capabilities.iter().map(|c| {
-                                                        view! { <span class="inline-flex px-1.5 py-0.5 text-xs rounded bg-surface-active text-muted">{c.clone()}</span> }
+                                                        view! { <span class="inline-flex px-1.5 py-0.5 text-xs rounded bg-surface-2 text-muted">{c.clone()}</span> }
                                                     }).collect::<Vec<_>>()}
                                                 </div>
                                             </td>
@@ -448,9 +446,14 @@ pub fn Providers() -> impl IntoView {
                                             <td class="px-4 py-3 text-right">
                                                 <div class="flex gap-1.5 justify-end">
                                                     <button on:click=move|_|show_edit_form(p.clone())
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-active text-secondary hover:text-primary hover:bg-border transition-all duration-150">"Edit"</button>
+                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg
+                                                               bg-transparent border border-surface text-secondary
+                                                               hover:text-primary hover:bg-surface-2
+                                                               active:scale-[0.97] transition-all duration-150">"Edit"</button>
                                                     <button on:click=move|_|delete_id.set(Some(pid.clone()))
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150">"Delete"</button>
+                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg
+                                                               text-danger border border-danger/30
+                                                               hover:bg-danger-bg active:scale-[0.97] transition-all duration-150">"Delete"</button>
                                                 </div>
                                             </td>
                                         </tr>

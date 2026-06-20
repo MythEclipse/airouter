@@ -222,9 +222,9 @@ pub fn RouteRules() -> impl IntoView {
     let strat_badge = |s: &str| -> (&'static str, &'static str) {
         match s {
             "single" => ("bg-blue-500/10 text-blue-400 border-blue-500/30", "Single"),
-            "fallback" => ("bg-purple-500/10 text-purple-400 border-purple-500/30", "Fallback"),
+            "fallback" => ("bg-accent-bg text-accent border-accent/30", "Fallback"),
             "round-robin" => ("bg-green-500/10 text-green-400 border-green-500/30", "Round-Robin"),
-            "fusion" => ("bg-orange-500/10 text-orange-400 border-orange-500/30", "Fusion"),
+            "fusion" => ("bg-amber-500/10 text-warning border-amber-500/30", "Fusion"),
             _ => ("bg-gray-500/10 text-gray-400 border-gray-500/30", "Unknown"),
         }
     };
@@ -238,7 +238,7 @@ pub fn RouteRules() -> impl IntoView {
                 </div>
                 <button on:click=move|_|show_add_form()
                     class="px-4 py-2 text-sm font-medium rounded-lg text-white
-                           bg-accent hover:bg-accent-hover
+                           bg-accent hover:bg-accent-hover active:scale-[0.97]
                            transition-all duration-150 flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -248,17 +248,17 @@ pub fn RouteRules() -> impl IntoView {
             </div>
 
             {move || (!error.get().is_empty()).then(||
-                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger">{error.get()}</p> }
+                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/30">{error.get()}</p> }
             )}
             {move || loading.get().then(|| view! { <SkeletonTable rows=5/> })}
 
             {move || delete_id.get().map(|id| {
                 let model = route_list.with(|r| r.iter().find(|x| x.id == id).map(|x| x.model.clone()).unwrap_or_default());
-                let id2 = id.clone();
+                let _id2 = id.clone();
                 view! {
                     <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in"
                         on:click=move|_|delete_id.set(None)>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl animate-scale-in"
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 w-full max-w-md mx-4 shadow-2xl animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-start gap-3 mb-4">
                                 <div class="w-10 h-10 rounded-full bg-danger-bg flex items-center justify-center flex-shrink-0">
@@ -273,11 +273,11 @@ pub fn RouteRules() -> impl IntoView {
                             </div>
                             <div class="flex gap-2 justify-end">
                                 <button on:click=move|_|delete_id.set(None)
-                                    class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-active text-primary border border-surface hover:bg-border transition-all duration-150">
+                                    class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3 active:scale-[0.97] transition-all duration-150">
                                     "Cancel"
                                 </button>
                                 <button on:click=move|_|do_delete(id.clone())
-                                    class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-danger hover:bg-red-600 transition-all duration-150">
+                                    class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-danger hover:bg-red-600 active:scale-[0.97] transition-all duration-150">
                                     "Delete"
                                 </button>
                             </div>
@@ -289,14 +289,14 @@ pub fn RouteRules() -> impl IntoView {
             // ─── Modal Form ──────────────────────────────────────────
             {move || show_form.get().then(|| {
                 let is_edit = edit_id.get().is_some();
-                let strat = form_strategy.get();
+                let _strat = form_strategy.get();
                 let names = provider_names.get();
                 view! {
                     <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[8vh] z-50 animate-fade-in"
                         on:click=move|_|show_form.set(false)>
-                        <div class="bg-surface-alt border border-surface rounded-xl w-full max-w-lg mx-4 max-h-[84vh] overflow-y-auto shadow-2xl animate-scale-in"
+                        <div class="bg-surface border border-border-subtle rounded-[14px] w-full max-w-lg mx-4 max-h-[84vh] overflow-y-auto shadow-2xl animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
-                            <div class="flex items-center justify-between px-6 py-4 border-b border-surface">
+                            <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
                                 <h2 class="text-lg font-semibold text-primary">{if is_edit { "Edit Route" } else { "Add Route" }}</h2>
                                 <button on:click=move|_|show_form.set(false)
                                     class="text-muted hover:text-primary transition-colors">
@@ -310,13 +310,13 @@ pub fn RouteRules() -> impl IntoView {
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Model"</label>
                                     <input type="text" prop:value=form_model.get() placeholder="e.g. gpt-4o, claude-sonnet-4, * (wildcard)"
                                         on:input=move|ev|form_model.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                        class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
                                 <div class="mb-4">
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Strategy"</label>
                                     <select prop:value=form_strategy.get()
                                         on:change=move|ev|form_strategy.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
+                                        class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
                                         <option value="single">"Single"</option>
                                         <option value="fallback">"Fallback"</option>
                                         <option value="round-robin">"Round-Robin"</option>
@@ -330,7 +330,7 @@ pub fn RouteRules() -> impl IntoView {
                                             <label class="block text-xs text-secondary mb-1.5 font-medium">"Provider"</label>
                                             <select prop:value=form_provider.get()
                                                 on:change=move|ev|form_provider.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
                                                 <option value="">"-- Select --"</option>
                                                 {names.iter().map(|n| { let n2 = n.clone(); view! { <option value=n.clone()>{n2}</option> }}).collect::<Vec<_>>()}
                                             </select>
@@ -344,7 +344,7 @@ pub fn RouteRules() -> impl IntoView {
                                     view! {
                                         <div class="mb-4">
                                             <label class="block text-xs text-secondary mb-1.5 font-medium">"Providers (first = highest)"</label>
-                                            <div class="flex flex-wrap gap-1.5 p-2.5 bg-[#0d1117] border border-surface rounded-lg min-h-[42px]">
+                                            <div class="flex flex-wrap gap-1.5 p-2.5 bg-surface-2 border border-border-subtle rounded-lg min-h-[42px]">
                                                 {provs.iter().enumerate().map(|(i, name)| {
                                                     let idx = i;
                                                     let n = name.clone();
@@ -376,19 +376,19 @@ pub fn RouteRules() -> impl IntoView {
                                 {move || (form_strategy.get() == "fusion").then(|| {
                                     view! {
                                         <>
-                                            <div class="mb-4 pt-3 border-t border-surface"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Fusion Settings"</p></div>
+                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Fusion Settings"</p></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Judge Model"</label>
                                                 <input type="text" prop:value=form_judge_model.get() placeholder="e.g. gpt-4o-mini" on:input=move|ev|form_judge_model.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Min Panel"</label>
                                                 <input type="number" prop:value=form_min_panel.get() min="1" on:input=move|ev|form_min_panel.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Straggler Grace (ms)"</label>
                                                 <input type="number" prop:value=form_straggler_grace.get() min="0" step="100" on:input=move|ev|form_straggler_grace.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Panel Hard Timeout (ms)"</label>
                                                 <input type="number" prop:value=form_panel_timeout.get() min="1000" step="1000" on:input=move|ev|form_panel_timeout.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
                                         </>
                                     }
                                 })}
@@ -396,19 +396,19 @@ pub fn RouteRules() -> impl IntoView {
                                 {move || (form_strategy.get() == "round-robin").then(|| {
                                     view! {
                                         <>
-                                            <div class="mb-4 pt-3 border-t border-surface"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Round-Robin Settings"</p></div>
+                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Round-Robin Settings"</p></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Sticky Limit (empty = no sticky)"</label>
                                                 <input type="number" prop:value=form_sticky_limit.get() min="1" placeholder="e.g. 3" on:input=move|ev|form_sticky_limit.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
+                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
                                         </>
                                     }
                                 })}
 
-                                <div class="flex gap-3 justify-end mt-6 pt-4 border-t border-surface">
+                                <div class="flex gap-3 justify-end mt-6 pt-4 border-t border-border-subtle">
                                     <button on:click=move|_|show_form.set(false)
-                                        class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-active text-primary border border-surface hover:bg-border transition-all duration-150">"Cancel"</button>
+                                        class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
                                     <button on:click=move|_|save() disabled=saving.get()
-                                        class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover disabled:opacity-50 transition-all duration-150 flex items-center gap-2">
+                                        class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover active:scale-[0.97] disabled:opacity-50 transition-all duration-150 flex items-center gap-2">
                                         {saving.get().then(|| view! { "Saving..." }).unwrap_or(view! { "Save" })}
                                     </button>
                                 </div>
@@ -422,9 +422,9 @@ pub fn RouteRules() -> impl IntoView {
                 let rs = route_list.get();
                 let cid = copied_id.get();
                 view! {
-                    <div class="bg-surface-alt border border-surface rounded-xl overflow-hidden animate-fade-in-up">
+                    <div class="bg-surface border border-border-subtle rounded-[14px] overflow-hidden animate-fade-in-up">
                         <table class="w-full">
-                            <thead><tr class="bg-surface-hover">
+                            <thead><tr class="bg-surface-2">
                                 <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Model"</th>
                                 <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Mode"</th>
                                 <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Providers"</th>
@@ -443,7 +443,7 @@ pub fn RouteRules() -> impl IntoView {
                                     let curl_for_btn = curl_id.clone();
                                     let curl_cid = curl_id.clone();
                                     view! {
-                                        <tr class="hover:bg-surface-hover/50 transition-colors duration-100">
+                                        <tr class="hover:bg-surface-2/50 transition-colors duration-100">
                                             <td class="px-4 py-3">
                                                 <div class="flex items-center gap-2">
                                                     <code class="text-sm font-mono text-accent">{r.model.clone()}</code>
@@ -506,7 +506,7 @@ pub fn RouteRules() -> impl IntoView {
                                                         }}
                                                     </button>
                                                     <button on:click=move|_|show_edit_form(r.clone())
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-active text-secondary hover:text-primary hover:bg-border transition-all duration-150">"Edit"</button>
+                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150">"Edit"</button>
                                                     <button on:click=move|_|delete_id.set(Some(rid.clone()))
                                                         class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150">"Delete"</button>
                                                 </div>
@@ -514,12 +514,12 @@ pub fn RouteRules() -> impl IntoView {
                                         </tr>
                                         {is_expanded.then(|| {
                                             view! {
-                                                <tr class="bg-[#0d1117]/50">
+                                                <tr class="bg-surface-2/50">
                                                     <td colspan="4" class="px-4 py-3">
                                                         <div class="animate-fade-in-up grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                                                             {combo_items.into_iter().map(|(label, val)| {
                                                                 view! {
-                                                                    <div class="bg-surface-alt border border-surface rounded-lg p-3">
+                                                                    <div class="bg-surface border border-border-subtle rounded-lg p-3">
                                                                         <p class="text-[10px] text-muted uppercase tracking-wider mb-1">{label}</p>
                                                                         <p class="text-sm font-mono text-primary">{val}</p>
                                                                     </div>

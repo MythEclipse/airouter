@@ -42,22 +42,22 @@ pub fn Analytics() -> impl IntoView {
                 view! {
                     <h2 class="text-lg font-semibold text-primary mb-4">"Providers & Models"</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Providers"</p>
                             <p class="text-2xl font-bold text-primary">{m.total_providers.to_string()}</p>
                             <p class="text-xs text-muted mt-1">"Configured"</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Models"</p>
                             <p class="text-2xl font-bold text-primary">{m.total_models.to_string()}</p>
                             <p class="text-xs text-muted mt-1">"Available"</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Models"</p>
                             <p class="text-2xl font-bold text-primary">{f_pct.to_string() + "%"}</p>
                             <p class="text-xs text-muted mt-1">{fm.to_string() + " of " + &m.total_models.to_string() + " models"}</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Providers"</p>
                             <p class="text-2xl font-bold text-primary">{fc.to_string()}</p>
                             <p class="text-xs text-muted mt-1">"Built-in"</p>
@@ -66,22 +66,22 @@ pub fn Analytics() -> impl IntoView {
 
                     <h2 class="text-lg font-semibold text-primary mb-4">"Live Metrics"</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Requests"</p>
                             <p class="text-2xl font-bold text-primary">{lv.total_requests.to_string()}</p>
                             <p class="text-xs text-muted mt-1">"Since start"</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Errors"</p>
                             <p class="text-2xl font-bold text-primary">{lv.total_errors.to_string()}</p>
                             <p class="text-xs text-muted mt-1">{format!("{:.1}% error rate", lv.error_rate * 100.0)}</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Avg Latency"</p>
                             <p class="text-2xl font-bold text-primary">{format!("{:.0}ms", lv.avg_latency_ms)}</p>
                             <p class="text-xs text-muted mt-1">"Per request"</p>
                         </div>
-                        <div class="bg-surface-alt border border-surface rounded-xl p-5 hover:border-surface-hover transition-all duration-200 hover:-translate-y-0.5">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
                             <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Uptime"</p>
                             <p class="text-2xl font-bold text-primary">{upt}</p>
                             <p class="text-xs text-muted mt-1">"Server running"</p>

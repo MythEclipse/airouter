@@ -98,7 +98,7 @@ pub fn Settings() -> impl IntoView {
             {move || loading.get().then(|| {
                 view! {
                     <div class="space-y-4">
-                        { (0..4).map(|_| view! { <div class="h-16 bg-surface-hover skeleton rounded-lg"></div> }).collect::<Vec<_>>() }
+                        { (0..4).map(|_| view! { <div class="h-16 bg-surface-hover skeleton rounded-[14px]"></div> }).collect::<Vec<_>>() }
                     </div>
                 }
             })}
@@ -106,8 +106,8 @@ pub fn Settings() -> impl IntoView {
             {move || settings.get().map(|_| {
                 view! {
                     <div class="space-y-6">
-                        <div class="bg-surface-alt border border-surface rounded-xl p-6 animate-fade-in-up">
-                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-surface">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 animate-fade-in-up">
+                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-border-subtle">
                                 "Server"
                             </h3>
                             <div class="space-y-4">
@@ -115,7 +115,7 @@ pub fn Settings() -> impl IntoView {
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Host"</label>
                                     <input type="text" prop:value=form_host.get()
                                         on:input=move|ev|form_host.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary
                                                focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
@@ -123,15 +123,15 @@ pub fn Settings() -> impl IntoView {
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Port"</label>
                                     <input type="number" prop:value=form_port.get()
                                         on:input=move|ev|form_port.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary
                                                focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="bg-surface-alt border border-surface rounded-xl p-6 animate-fade-in-up">
-                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-surface">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 animate-fade-in-up">
+                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-border-subtle">
                                 "Max Tokens"
                             </h3>
                             <div>
@@ -141,7 +141,7 @@ pub fn Settings() -> impl IntoView {
                                 <input type="number" prop:value=form_max_tokens.get() min="0"
                                     placeholder="Leave empty = auto / use provider default"
                                     on:input=move|ev|form_max_tokens.set(event_target_value(&ev))
-                                    class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                            text-sm text-primary placeholder-muted
                                            focus:border-accent focus:outline-none transition-colors"/>
                                 <p class="text-xs text-muted mt-1.5">
@@ -150,23 +150,22 @@ pub fn Settings() -> impl IntoView {
                             </div>
                         </div>
 
-                        <div class="bg-surface-alt border border-surface rounded-xl p-6 animate-fade-in-up">
-                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-surface">
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 animate-fade-in-up">
+                            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-4 pb-3 border-b border-border-subtle">
                                 "Rate Limit"
                             </h3>
                             <div class="space-y-4">
                                 <div class="flex items-center gap-3">
                                     <input type="checkbox" prop:checked=form_rl_enabled.get()
                                         on:change=move|ev|form_rl_enabled.set(event_target_checked(&ev))
-                                        class="w-4 h-4 rounded border-surface bg-[#0d1117]
-                                               checked:bg-accent transition-colors"/>
+                                        class="w-4 h-4 rounded border-surface bg-surface-2 transition-colors"/>
                                     <label class="text-sm text-primary">"Enabled"</label>
                                 </div>
                                 <div>
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Requests per Minute"</label>
                                     <input type="number" prop:value=form_rl_rpm.get()
                                         on:input=move|ev|form_rl_rpm.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary
                                                focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
@@ -174,7 +173,7 @@ pub fn Settings() -> impl IntoView {
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Burst Size"</label>
                                     <input type="number" prop:value=form_rl_burst.get()
                                         on:input=move|ev|form_rl_burst.set(event_target_value(&ev))
-                                        class="w-full px-3 py-2 bg-[#0d1117] border border-surface rounded-lg
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg
                                                text-sm text-primary
                                                focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
@@ -184,7 +183,7 @@ pub fn Settings() -> impl IntoView {
                         <div class="flex justify-end pt-2">
                             <button on:click=move|_|save() disabled=saving.get()
                                 class="px-6 py-2.5 text-sm font-medium rounded-lg text-white
-                                       bg-accent hover:bg-accent-hover
+                                       bg-accent hover:bg-accent-hover active:scale-[0.97]
                                        disabled:opacity-50 transition-all duration-150 flex items-center gap-2">
                                 {saving.get().then(|| view! { "Saving..." }).unwrap_or(view! { "Save Settings" })}
                             </button>

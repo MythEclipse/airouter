@@ -132,7 +132,7 @@ async fn api_request<T: serde::de::DeserializeOwned>(
     body: Option<&str>,
 ) -> Result<T, String> {
     let window = web_sys::window().ok_or("No window")?;
-    let mut opts = web_sys::RequestInit::new();
+    let opts = web_sys::RequestInit::new();
     opts.set_method(method);
     opts.set_mode(web_sys::RequestMode::Cors);
     if let Some(b) = body {
@@ -174,6 +174,7 @@ pub async fn fetch_dashboard() -> Result<DashboardData, String> {
 
 // ─── Providers CRUD ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub async fn fetch_provider_types() -> Result<Vec<ProviderTypeInfo>, String> {
     api_request::<Vec<ProviderTypeInfo>>("GET", "/api/dashboard/provider-types", None).await
 }

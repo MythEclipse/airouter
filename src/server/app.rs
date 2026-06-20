@@ -74,19 +74,25 @@ impl AppState {
         let settings = crate::config::db::load_config_from_db(&self.db).await?;
         let registry = provider::ProviderRegistry::from_config(&settings.providers);
 
-        // Load key hashes from DB
+        self.config.store(Arc::new(settings));
+        self.registry.store(Arc::new(registry));
+
+        // Load key hashes from DB (separate call so key hot-reload is not dependent on provider/route queries)
+        self.reload_key_hashes().await?;
+
+        tracing::info!("Configuration hot-reloaded from database");
+        Ok(())
+    }
+
+    /// Reload only the key hashes from DB — fast path for API key CRUD
+    pub async fn reload_key_hashes(&self) -> Result<(), sea_orm::DbErr> {
         use crate::entities::api_key;
         use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
         let key_rows = api_key::Entity::find()
             .filter(api_key::Column::Enabled.eq(true))
             .all(&self.db).await?;
         let hashes: HashSet<String> = key_rows.into_iter().map(|r| r.key_hash).collect();
-
-        self.config.store(Arc::new(settings));
-        self.registry.store(Arc::new(registry));
         self.key_hashes.store(Arc::new(hashes));
-
-        tracing::info!("Configuration hot-reloaded from database");
         Ok(())
     }
 }
