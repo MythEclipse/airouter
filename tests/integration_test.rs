@@ -10,7 +10,7 @@ fn test_health_check_endpoint() {
 
 #[test]
 fn test_chat_completion_request_routing() {
-    use airouter::config::settings::{Settings, RouteConfig, builtin_providers, builtin_routes};
+    use airouter::config::settings::{Settings, builtin_providers, builtin_routes};
     use airouter::provider::ProviderRegistry;
 
     let s = Settings::default_builtins();
@@ -87,6 +87,7 @@ fn test_provider_registry_unknown_type_falls_back() {
         base_url: "http://localhost".into(),
         models: vec!["model-1".into()],
         extra_headers: HashMap::new(),
+        capabilities: Vec::new(),
     }];
 
     let registry = ProviderRegistry::from_config(&providers);
@@ -98,7 +99,7 @@ fn test_provider_registry_unknown_type_falls_back() {
 
 #[test]
 fn test_all_routes_have_provider() {
-    use airouter::config::settings::{Settings, builtin_providers, builtin_routes};
+    use airouter::config::settings::{builtin_providers, builtin_routes};
     use airouter::provider::ProviderRegistry;
 
     let registry = ProviderRegistry::from_config(&builtin_providers());

@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::auth::middleware::auth_middleware;
 use crate::provider;
 use crate::router::balancer::LoadBalancer;
+use crate::router::core::RouteEngine;
 
 const FRONTEND_DIST: &str = "frontend-dist";
 
@@ -61,6 +62,7 @@ pub struct AppState {
     pub registry: Arc<provider::ProviderRegistry>,
     pub rate_limiter: crate::rate_limit::RateLimitState,
     pub balancer: Arc<LoadBalancer>,
+    pub engine: Arc<RouteEngine>,
     pub tracker: crate::tracker::RequestTracker,
     pub prometheus_handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
 }

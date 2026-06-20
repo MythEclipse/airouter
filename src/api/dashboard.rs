@@ -46,7 +46,7 @@ pub struct LiveMetrics {
     pub uptime_seconds: u64,
 }
 
-pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/dashboard", get(handle_dashboard))
         .route("/api/metrics", get(handle_provider_metrics))

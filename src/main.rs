@@ -40,11 +40,19 @@ async fn main() -> Result<(), anyhow::Error> {
         .install_recorder()
         .ok();
 
+    let balancer = Arc::new(router::balancer::LoadBalancer::new(30)); // 30s cooldown
+    let engine = Arc::new(router::core::RouteEngine::new(
+        registry.clone(),
+        balancer.clone(),
+        settings.clone(),
+    ));
+
     let app_state = server::app::AppState {
         settings: settings.clone(),
         registry: registry.clone(),
         rate_limiter: rate_limiter.clone(),
-        balancer: Arc::new(router::balancer::LoadBalancer::new(30)), // 30s cooldown
+        balancer: balancer.clone(),
+        engine: engine.clone(),
         tracker: request_tracker.clone(),
         prometheus_handle: prometheus_handle.clone(),
     };

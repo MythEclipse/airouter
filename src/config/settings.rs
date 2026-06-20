@@ -32,6 +32,18 @@ pub struct ComboConfig {
     pub sticky_limit: Option<usize>,
 }
 
+impl Default for ComboConfig {
+    fn default() -> Self {
+        Self {
+            judge_model: None,
+            min_panel: 1,
+            straggler_grace_ms: 2000,
+            panel_hard_timeout_ms: 30000,
+            sticky_limit: None,
+        }
+    }
+}
+
 fn default_min_panel() -> usize { 1 }
 fn default_straggler_grace_ms() -> u64 { 2000 }
 fn default_panel_hard_timeout_ms() -> u64 { 30000 }

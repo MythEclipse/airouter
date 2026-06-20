@@ -97,4 +97,3 @@ impl LoadBalancer {
         Some(names[start].clone())
     }
 }
-}

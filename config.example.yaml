@@ -58,6 +58,7 @@ providers:
     type: openai
     api_key: "${OPENAI_API_KEY}"
     base_url: "https://api.openai.com/v1"
+    capabilities: ["vision", "audio"]
     models:
       - "gpt-4o"
       - "gpt-4o-mini"
@@ -68,6 +69,7 @@ providers:
     type: anthropic
     api_key: "${ANTHROPIC_API_KEY}"
     base_url: "https://api.anthropic.com/v1"
+    capabilities: ["vision"]
     models:
       - "claude-sonnet-4-20250514"
       - "claude-3-5-sonnet-20241022"
@@ -109,16 +111,11 @@ providers:
       - "mistral"
 
 # Routing rules — map model names to provider groups
+# Strategies: single | fallback | round-robin | fusion
 # DEFAULT: use FREE providers (opencode, mimo) as primary
 routes:
-  # ── OpenCode Free models (DEFAULT — no key needed) ─────────────
+  # ── Fallback: try providers in order, stop at first success ────
   - model: "kimi-k2.6"
-    strategy: fallback
-    providers:
-      - "opencode"
-      - "opencode-go"
-
-  - model: "kimi-k2.5"
     strategy: fallback
     providers:
       - "opencode"
@@ -172,10 +169,29 @@ routes:
     strategy: single
     provider: "openai"
 
-  # ── Anthropic models ───────────────────────────────────────────
+  # ── Fusion: parallel fan-out to ALL providers, combine answers ──
+  # Non-streaming only. Judge model synthesizes the best answer.
   - model: "claude-sonnet-4-20250514"
-    strategy: single
-    provider: "anthropic"
+    strategy: fusion
+    combo:
+      judge_model: "gpt-4o-mini"
+      min_panel: 2
+      straggler_grace_ms: 2000
+      panel_hard_timeout_ms: 15000
+    providers:
+      - "anthropic"
+      - "openai"
+      - "gemini"
+
+  # ── Round-Robin: rotate starting provider per request ──────────
+  # Sticky=3 keeps the same provider for 3 consecutive requests
+  - model: "llama-3.3-70b-versatile"
+    strategy: round-robin
+    combo:
+      sticky_limit: 3
+    providers:
+      - "groq"
+      - "openai"
 
   - model: "claude-3-5-sonnet-20241022"
     strategy: single
