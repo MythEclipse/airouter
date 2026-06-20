@@ -14,6 +14,7 @@ build-backend:
 
 build-frontend:
 	cd frontend && trunk build --dist "../${FRONTEND_DIST}" --release
+	cp -r frontend/style ${FRONTEND_DIST}/style 2>/dev/null || true
 
 # ─── Run ─────────────────────────────────────────────────────────
 
@@ -34,6 +35,17 @@ dev-frontend:
 
 test:
 	cargo test
+
+test-e2e:
+	@echo ">> Starting server for E2E test..."
+	@./target/release/airouter &
+	@sleep 3
+	@cd e2e && node test.mjs; kill %1 2>/dev/null || true
+
+test-e2e-quick:
+	@cd e2e && node test.mjs
+
+test-all: test test-e2e
 
 test-watch:
 	cargo test 2>/dev/null; cargo test 2>&1 | grep -E "^test |test result"

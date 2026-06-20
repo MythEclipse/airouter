@@ -7,4 +7,5 @@ pub mod transform;
 pub mod auth;
 pub mod rate_limit;
 pub mod streaming;
+pub mod tracker;
 pub mod types;

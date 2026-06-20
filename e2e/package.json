@@ -1,0 +1,12 @@
+{
+  "name": "airouter-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node test.mjs",
+    "install-browser": "npx playwright install chromium --with-deps"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  }
+}

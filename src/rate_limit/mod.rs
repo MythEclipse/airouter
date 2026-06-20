@@ -42,8 +42,9 @@ impl RateLimitState {
     }
 }
 
+/// Rate limit middleware. The router uses Arc<AppState>, so accept that here.
 pub async fn rate_limit_middleware(
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     req: Request,
     next: Next,
 ) -> impl IntoResponse {
@@ -53,6 +54,36 @@ pub async fn rate_limit_middleware(
 
     let key = extract_bearer_token(req.headers()).unwrap_or_default();
     let limiter = state.rate_limiter.get_limiter(&key);
+
+    match limiter.check() {
+        Ok(_) => Ok(next.run(req).await),
+        Err(_) => {
+            let err = serde_json::json!({
+                "error": {
+                    "message": "Rate limit exceeded. Try again later.",
+                    "type": "rate_limit_error",
+                    "param": null,
+                    "code": "rate_limit_exceeded"
+                }
+            });
+            Err((StatusCode::TOO_MANY_REQUESTS, Json(err)))
+        }
+    }
+}
+
+/// Rate limit middleware that takes an optional RateLimitState directly (for use without Arc<AppState>).
+/// Only used where middleware is applied differently.
+pub async fn rate_limit_layer_fn(
+    State(rate_limiter): State<crate::rate_limit::RateLimitState>,
+    req: Request,
+    next: Next,
+) -> impl IntoResponse {
+    if req.uri().path() == "/health" {
+        return Ok(next.run(req).await);
+    }
+
+    let key = extract_bearer_token(req.headers()).unwrap_or_default();
+    let limiter = rate_limiter.get_limiter(&key);
 
     match limiter.check() {
         Ok(_) => Ok(next.run(req).await),

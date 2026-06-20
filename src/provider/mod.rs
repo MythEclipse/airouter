@@ -3,6 +3,11 @@ pub mod anthropic;
 pub mod openai_compat;
 pub mod opencode_free;
 pub mod mimo_free;
+pub mod groq;
+pub mod deepseek;
+pub mod gemini;
+pub mod openrouter;
+pub mod ollama;
 
 use std::collections::HashMap;
 use async_trait::async_trait;
@@ -80,6 +85,11 @@ impl ProviderRegistry {
                 "opencode_free" => Box::new(opencode_free::OpenCodeFreeProvider::new(cfg)),
                 "mimo_free" => Box::new(mimo_free::MimoFreeProvider::new(cfg)),
                 "openai_compat" => Box::new(openai_compat::OpenAICompatProvider::new(cfg)),
+                "groq" => Box::new(groq::GroqProvider::new(cfg)),
+                "deepseek" => Box::new(deepseek::DeepSeekProvider::new(cfg)),
+                "gemini" => Box::new(gemini::GeminiProvider::new(cfg)),
+                "openrouter" => Box::new(openrouter::OpenRouterProvider::new(cfg)),
+                "ollama" => Box::new(ollama::OllamaProvider::new(cfg)),
                 other => {
                     tracing::warn!("Unknown provider type: {}, falling back to openai_compat", other);
                     Box::new(openai_compat::OpenAICompatProvider::new(cfg))

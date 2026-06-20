@@ -8,6 +8,7 @@ mod auth;
 mod rate_limit;
 mod streaming;
 mod types;
+pub mod tracker;
 
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
@@ -32,11 +33,20 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing::info!(provider_count = %registry.all().count(), "Provider registry initialized");
 
     let rate_limiter = rate_limit::RateLimitState::from_config(&settings.rate_limit);
+    let request_tracker = tracker::RequestTracker::new();
+
+    // Initialize Prometheus metrics exporter
+    let prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+        .install_recorder()
+        .ok();
 
     let app_state = server::app::AppState {
         settings: settings.clone(),
         registry: registry.clone(),
         rate_limiter: rate_limiter.clone(),
+        balancer: Arc::new(router::balancer::LoadBalancer::new(30)), // 30s cooldown
+        tracker: request_tracker.clone(),
+        prometheus_handle: prometheus_handle.clone(),
     };
 
     let app = server::app::create_router(app_state, settings.clone(), registry.clone());

@@ -1,26 +1,29 @@
 use leptos::*;
-use crate::api::fetch_dashboard;
+use crate::api::{fetch_dashboard, ProviderStatus};
 
 #[component]
 pub fn Providers() -> impl IntoView {
-    let data = create_resource(|| (), |_| async move {
-        fetch_dashboard("sk-test-abc123").await
+    let providers = create_rw_signal(Vec::<ProviderStatus>::new());
+    let loading = create_rw_signal(true);
+
+    spawn_local(async move {
+        if let Ok(data) = fetch_dashboard().await {
+            providers.set(data.providers);
+            loading.set(false);
+        }
     });
 
     view! {
         <div class="page">
             <h1>"Providers"</h1>
             <p>"Configured LLM providers."</p>
+            {move || loading.get().then(|| view! { <p class="loading">"Loading providers..."</p> })}
 
-            <Suspense fallback=|| view! { <div class="loading">"Loading providers..."</div> }>
-            {move || data.get().map(|d| {
-                let providers = match d {
-                    Ok(ref dd) => dd.providers.clone(),
-                    Err(ref e) => return view! { <div class="error">"Error: " {e}</div> }.into_any(),
-                };
+            {move || (!loading.get()).then(|| {
+                let provs = providers.get();
                 view! {
                     <div class="provider-grid">
-                        {providers.into_iter().map(|p| {
+                        {provs.into_iter().map(|p| {
                             let is_free = p.provider_type == "opencode_free" || p.provider_type == "mimo_free";
                             view! {
                                 <div class="provider-card" style=format!("border-left-color: {}", p.color)>
@@ -39,13 +42,16 @@ pub fn Providers() -> impl IntoView {
                                             view! { <span class="badge badge-paid">"API KEY"</span> }
                                         }}
                                     </div>
+                                    <div class="provider-extra">
+                                        <span>"reqs: " {p.request_count.to_string()}</span>
+                                        <span>" errors: " {p.error_count.to_string()}</span>
+                                    </div>
                                 </div>
                             }
                         }).collect::<Vec<_>>()}
                     </div>
-                }.into_any()
+                }
             })}
-            </Suspense>
         </div>
     }
 }

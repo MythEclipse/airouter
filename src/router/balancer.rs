@@ -58,4 +58,25 @@ impl LoadBalancer {
         // All on cooldown — return the first one anyway
         Some(providers[start])
     }
+
+    /// Select a provider name, skipping those on cooldown
+    pub fn select_by_name(&self, names: &[String]) -> Option<String> {
+        if names.is_empty() { return None; }
+        let len = names.len();
+        let start = self.next_index(len);
+
+        for i in 0..len {
+            let idx = (start + i) % len;
+            if !self.is_on_cooldown(&names[idx]) {
+                return Some(names[idx].clone());
+            }
+        }
+
+        Some(names[start].clone())
+    }
+
+    /// Clear cooldown for a provider (called on success)
+    pub fn clear_cooldown(&self, provider_name: &str) {
+        self.cooldowns.remove(provider_name);
+    }
 }
