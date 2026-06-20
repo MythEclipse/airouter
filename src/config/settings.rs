@@ -2,9 +2,45 @@ use serde::Deserialize;
 use std::fs;
 use std::collections::HashMap;
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum StrategyKind {
+    Single,
+    Fallback,
+    #[serde(rename = "round-robin")]
+    RoundRobin,
+    Fusion,
+}
+
+impl Default for StrategyKind {
+    fn default() -> Self {
+        Self::Fallback
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ComboConfig {
+    #[serde(default)]
+    pub judge_model: Option<String>,
+    #[serde(default = "default_min_panel")]
+    pub min_panel: usize,
+    #[serde(default = "default_straggler_grace_ms")]
+    pub straggler_grace_ms: u64,
+    #[serde(default = "default_panel_hard_timeout_ms")]
+    pub panel_hard_timeout_ms: u64,
+    #[serde(default)]
+    pub sticky_limit: Option<usize>,
+}
+
+fn default_min_panel() -> usize { 1 }
+fn default_straggler_grace_ms() -> u64 { 2000 }
+fn default_panel_hard_timeout_ms() -> u64 { 30000 }
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub server: ServerConfig,
+    #[serde(default)]
+    pub default_strategy: Option<StrategyKind>,
     #[serde(default)]
     pub keys: Vec<String>,
     #[serde(default)]
@@ -40,17 +76,32 @@ pub struct ProviderConfig {
     pub models: Vec<String>,
     #[serde(default)]
     pub extra_headers: HashMap<String, String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RouteConfig {
     pub model: String,
     #[serde(default)]
-    pub strategy: String,
+    pub strategy: StrategyKind,
     #[serde(default)]
     pub provider: Option<String>,
     #[serde(default)]
     pub providers: Option<Vec<String>>,
+    #[serde(default)]
+    pub combo: Option<ComboConfig>,
+}
+
+impl RouteConfig {
+    pub fn effective_strategy(&self, global_default: Option<&StrategyKind>) -> StrategyKind {
+        match &self.strategy {
+            StrategyKind::Single | StrategyKind::RoundRobin | StrategyKind::Fusion => self.strategy.clone(),
+            StrategyKind::Fallback => {
+                global_default.cloned().unwrap_or(StrategyKind::Fallback)
+            }
+        }
+    }
 }
 
 fn default_enabled() -> bool { true }
@@ -89,6 +140,7 @@ pub fn builtin_providers() -> Vec<ProviderConfig> {
                 "minimax-m2.7".into(), "minimax-m2.5".into(),
             ],
             extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
         },
         ProviderConfig {
             name: "mimo".into(),
@@ -100,6 +152,7 @@ pub fn builtin_providers() -> Vec<ProviderConfig> {
                 "mimo-v2-omni".into(), "mimo-v2-flash".into(),
             ],
             extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
         },
     ]
 }
@@ -107,21 +160,19 @@ pub fn builtin_providers() -> Vec<ProviderConfig> {
 /// Free built-in routes — always available.
 pub fn builtin_routes() -> Vec<RouteConfig> {
     vec![
-        // OpenCode Free models
-        RouteConfig { model: "kimi-k2.6".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "kimi-k2.5".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "glm-5.1".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "glm-5".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "qwen3.5-plus".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "qwen3.6-plus".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "mimo-v2-pro".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "mimo-v2-omni".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "minimax-m2.7".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        RouteConfig { model: "minimax-m2.5".into(), strategy: "single".into(), provider: Some("opencode".into()), providers: None },
-        // MiMo Free models (unique to mimo, not in opencode)
-        RouteConfig { model: "mimo-v2.5-pro".into(), strategy: "single".into(), provider: Some("mimo".into()), providers: None },
-        RouteConfig { model: "mimo-v2.5".into(), strategy: "single".into(), provider: Some("mimo".into()), providers: None },
-        RouteConfig { model: "mimo-v2-flash".into(), strategy: "single".into(), provider: Some("mimo".into()), providers: None },
+        RouteConfig { model: "kimi-k2.6".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "kimi-k2.5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "glm-5.1".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "glm-5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "qwen3.5-plus".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "qwen3.6-plus".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2-pro".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2-omni".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "minimax-m2.7".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "minimax-m2.5".into(), strategy: StrategyKind::Single, provider: Some("opencode".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2.5-pro".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2.5".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
+        RouteConfig { model: "mimo-v2-flash".into(), strategy: StrategyKind::Single, provider: Some("mimo".into()), providers: None, combo: None },
     ]
 }
 
@@ -147,10 +198,10 @@ impl Settings {
         Ok(settings)
     }
 
-    /// Default settings with no config file — free providers only.
     pub fn default_builtins() -> Self {
         Self {
             server: ServerConfig::default(),
+            default_strategy: None,
             keys: vec!["sk-test-abc123".into()],
             providers: builtin_providers(),
             routes: builtin_routes(),
@@ -158,7 +209,6 @@ impl Settings {
         }
     }
 
-    /// Try loading from file, fall back to builtins if file not found.
     pub fn load(path: &str) -> Result<Self, anyhow::Error> {
         if fs::metadata(path).is_ok() {
             Self::from_file(path)
@@ -227,5 +277,70 @@ mod tests {
         let sc = ServerConfig::default();
         assert_eq!(sc.host, "0.0.0.0");
         assert_eq!(sc.port, 3000);
+    }
+
+    #[test]
+    fn test_strategy_kind_deserialize() {
+        let val: StrategyKind = serde_yaml::from_str("single").unwrap();
+        assert_eq!(val, StrategyKind::Single);
+        let val: StrategyKind = serde_yaml::from_str("fallback").unwrap();
+        assert_eq!(val, StrategyKind::Fallback);
+        let val: StrategyKind = serde_yaml::from_str("round-robin").unwrap();
+        assert_eq!(val, StrategyKind::RoundRobin);
+        let val: StrategyKind = serde_yaml::from_str("fusion").unwrap();
+        assert_eq!(val, StrategyKind::Fusion);
+    }
+
+    #[test]
+    fn test_route_config_with_combo() {
+        let yaml = r#"
+model: "test"
+strategy: fusion
+combo:
+  judge_model: "gpt-4o-mini"
+  min_panel: 2
+  straggler_grace_ms: 3000
+  panel_hard_timeout_ms: 15000
+providers:
+  - "openai"
+  - "anthropic"
+"#;
+        let route: RouteConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(route.strategy, StrategyKind::Fusion);
+        let combo = route.combo.unwrap();
+        assert_eq!(combo.judge_model, Some("gpt-4o-mini".into()));
+        assert_eq!(combo.min_panel, 2);
+    }
+
+    #[test]
+    fn test_provider_config_with_capabilities() {
+        let yaml = r#"
+name: "test"
+type: openai
+capabilities:
+  - "vision"
+  - "audio"
+models: []
+"#;
+        let pc: ProviderConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(pc.capabilities, vec!["vision", "audio"]);
+    }
+
+    #[test]
+    fn test_effective_strategy_resolution() {
+        let route_fallback = RouteConfig {
+            model: "test".into(), strategy: StrategyKind::Fallback,
+            provider: None, providers: None, combo: None,
+        };
+        // Fallback route with no global → fallback
+        assert_eq!(route_fallback.effective_strategy(None), StrategyKind::Fallback);
+        // Fallback route with global → global
+        assert_eq!(route_fallback.effective_strategy(Some(&StrategyKind::RoundRobin)), StrategyKind::RoundRobin);
+        // Non-fallback route ignores global
+        let route_fusion = RouteConfig {
+            model: "test".into(), strategy: StrategyKind::Fusion,
+            provider: None, providers: None, combo: None,
+        };
+        assert_eq!(route_fusion.effective_strategy(Some(&StrategyKind::RoundRobin)), StrategyKind::Fusion);
     }
 }
