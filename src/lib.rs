@@ -9,3 +9,4 @@ pub mod rate_limit;
 pub mod streaming;
 pub mod tracker;
 pub mod types;
+pub mod entities;

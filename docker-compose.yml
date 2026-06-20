@@ -1,10 +1,38 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: asephs
+      POSTGRES_PASSWORD: hunterz
+      POSTGRES_DB: airouter
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U asephs -d airouter"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   airouter:
     build: .
     ports:
       - "3000:3000"
     environment:
       - AIROUTER_CONFIG=/etc/airouter/config.yaml
+      - DATABASE_URL=postgres://asephs:hunterz@postgres:5432/airouter
+      - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
@@ -12,4 +40,12 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
     volumes:
       - ./config.yaml:/etc/airouter/config.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  pgdata:

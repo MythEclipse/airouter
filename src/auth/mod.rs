@@ -2,6 +2,13 @@ pub mod middleware;
 
 use axum::http::HeaderMap;
 
+pub fn sha2_hex(input: &str) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 pub fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get("authorization")

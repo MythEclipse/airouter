@@ -9,6 +9,7 @@ mod rate_limit;
 mod streaming;
 mod types;
 pub mod tracker;
+mod entities;
 
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
@@ -22,6 +23,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tracing::info!("Starting AIRouter...");
 
+    // ── Load .env ───────────────────────────────────────────────────
+    dotenvy::dotenv().ok();
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set in .env or environment");
+
+    // ── Connect to PostgreSQL ───────────────────────────────────────
+    use sea_orm::Database;
+    let db = Database::connect(&database_url).await?;
+    config::db::run_migrations(&db).await?;
+    config::db::seed_defaults(&db).await?;
+    tracing::info!("Database connected and initialized");
+
+    // ── Load config ─────────────────────────────────────────────────
     let config_path = std::env::var("AIROUTER_CONFIG").unwrap_or_else(|_| "config.yaml".into());
     let settings = config::settings::Settings::load(&config_path)?;
     let settings = Arc::new(settings);
@@ -48,6 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ));
 
     let app_state = server::app::AppState {
+        db,
         settings: settings.clone(),
         registry: registry.clone(),
         rate_limiter: rate_limiter.clone(),

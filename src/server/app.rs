@@ -58,6 +58,7 @@ pub fn create_router(
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: sea_orm::DatabaseConnection,
     pub settings: Arc<crate::config::settings::Settings>,
     pub registry: Arc<provider::ProviderRegistry>,
     pub rate_limiter: crate::rate_limit::RateLimitState,

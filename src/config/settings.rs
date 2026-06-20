@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ impl Default for StrategyKind {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ComboConfig {
     #[serde(default)]
     pub judge_model: Option<String>,
@@ -135,6 +135,9 @@ impl Default for RateLimitConfig {
         Self { enabled: true, requests_per_minute: 60, burst_size: 20 }
     }
 }
+
+/// Default API key used when seeding the database
+pub const DEFAULT_KEY: &str = "sk-test-abc123";
 
 /// Free built-in providers — always available, no config needed.
 pub fn builtin_providers() -> Vec<ProviderConfig> {
