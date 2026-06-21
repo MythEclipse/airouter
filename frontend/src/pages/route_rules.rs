@@ -522,7 +522,7 @@ pub fn RouteRules() -> impl IntoView {
                                                         </> }
                                                     }}
                                                 </button>
-                                                <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div class="flex gap-1.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                     <button on:click=move|_|show_edit_form(r_edit.clone())
                                                         class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150">"Edit"</button>
                                                     <button on:click=move|_|delete_id.set(Some(rid.clone()))

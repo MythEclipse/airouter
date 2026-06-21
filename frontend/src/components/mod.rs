@@ -1,7 +1,8 @@
 pub mod sidebar;
-pub mod card;
 pub mod badge;
-pub mod modal;
 pub mod button;
+pub mod card;
+pub mod modal;
 pub mod tag_input;
 pub mod skeleton;
+pub mod provider_icon;

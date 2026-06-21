@@ -9,16 +9,31 @@ pub fn Analytics() -> impl IntoView {
     let free_count = create_rw_signal(0usize);
     let free_models = create_rw_signal(0usize);
     let loading = create_rw_signal(true);
+    let error = create_rw_signal(String::new());
 
-    spawn_local(async move {
-        if let Ok(data) = fetch_dashboard().await {
-            let fc = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").count();
-            let fm: usize = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").map(|p| p.model_count).sum();
-            metrics.set(data.metrics);
-            live.set(data.live_metrics);
-            free_count.set(fc);
-            free_models.set(fm);
-            loading.set(false);
+    spawn_local({
+        let metrics = metrics.clone();
+        let live = live.clone();
+        let free_count = free_count.clone();
+        let free_models = free_models.clone();
+        let loading = loading.clone();
+        let error = error.clone();
+        async move {
+            match fetch_dashboard().await {
+                Ok(data) => {
+                    let fc = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").count();
+                    let fm: usize = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").map(|p| p.model_count).sum();
+                    metrics.set(data.metrics);
+                    live.set(data.live_metrics);
+                    free_count.set(fc);
+                    free_models.set(fm);
+                    loading.set(false);
+                }
+                Err(e) => {
+                    error.set(e);
+                    loading.set(false);
+                }
+            }
         }
     });
 
@@ -28,6 +43,10 @@ pub fn Analytics() -> impl IntoView {
                 <h1 class="text-2xl font-bold text-primary">"Analytics"</h1>
                 <p class="text-sm text-secondary mt-1">"Gateway usage overview"</p>
             </div>
+
+            {move || (!error.get().is_empty()).then(||
+                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/30">{error.get()}</p> }
+            )}
 
             {move || loading.get().then(|| view! { <SkeletonCards count=4/> })}
 

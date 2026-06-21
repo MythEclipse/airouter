@@ -3,14 +3,17 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="description" content="AIRouter — AI Gateway for managing LLM providers, routing rules, and API keys"/>
+    <meta name="theme-color" content="#1a1a1a"/>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛸</text></svg>"/>
     <title>AIRouter — AI Gateway</title>
-<link rel="modulepreload" href="/airouter-frontend-c648a943157b4a42.js" crossorigin="anonymous" integrity="sha384-Ctb4NnJFP6fl45FA9epInT9G03jcKT4NapUIfw7G/QhAKv/EXXQBJjJ0ptZrNK5Y"><link rel="preload" href="/airouter-frontend-c648a943157b4a42_bg.wasm" crossorigin="anonymous" integrity="sha384-UGYszMCGcjQvCxxZVYbzGRjEiLe/PidaQgw0c7CnkEbFkBRHOR6hn58v3ZW8cC/1" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="/airouter-frontend-df4e788f56f0ce24.js" crossorigin="anonymous" integrity="sha384-U55WmAZFhQUW6zXk4QtVdceRLHLcb9avdFrhhEY9uaTD66dYLDW0bFwU7oaZVLXu"><link rel="preload" href="/airouter-frontend-df4e788f56f0ce24_bg.wasm" crossorigin="anonymous" integrity="sha384-GnRjYUBp1fXee5IWcRQbWhUnKudwLpYKRGsAunkDJohgXHg4UGVTtXooEflObDxq" as="fetch" type="application/wasm"></head>
 <body>
     <div id="app"></div>
     
 <script type="module">
-import init, * as bindings from '/airouter-frontend-c648a943157b4a42.js';
-const wasm = await init({ module_or_path: '/airouter-frontend-c648a943157b4a42_bg.wasm' });
+import init, * as bindings from '/airouter-frontend-df4e788f56f0ce24.js';
+const wasm = await init({ module_or_path: '/airouter-frontend-df4e788f56f0ce24_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -19,6 +22,6 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-    <link rel="stylesheet" href="/main-1c71e61878db41b6.css" integrity="sha384-Hd5leYb1Wet3+Io52ap24Ncac05RE0h52M4bR3v/PLcKyt5rID6nzrh8L2RcrEuw"/>
+    <link rel="stylesheet" href="/main-92142b6ffd1a6960.css" integrity="sha384-YQ+fV0zxW+Vf1BXRBrB4rt6fb50ph+UR0tDJByQwY9rSnSJuZo5EkWw0CWjhOMzz"/>
 </body>
 </html>

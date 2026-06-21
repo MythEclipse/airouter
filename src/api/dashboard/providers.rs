@@ -149,7 +149,7 @@ async fn test_provider(
     // Free providers have hardcoded URLs — override empty base_url
     let base_url = match row.provider_type.as_str() {
         "opencode_free" => "https://opencode.ai/zen/v1".to_string(),
-        "mimo_free" => "https://api.xiaomimimo.com/api/free-ai/v1".to_string(),
+        "mimo_free" => "https://api.xiaomimimo.com/api/free-ai/openai/chat".to_string(),
         _ => {
             if base_url.is_empty() {
                 return Err(err_400("Provider has no base URL configured"));
@@ -174,7 +174,12 @@ async fn test_provider(
 
     let client = reqwest::Client::new();
 
-    let url = format!("{}/chat/completions", base_with_scheme);
+    let url = if row.provider_type == "mimo_free" {
+        // mimo_free base_url is already the full chat endpoint
+        base_with_scheme.clone()
+    } else {
+        format!("{}/chat/completions", base_with_scheme)
+    };
     let mut req_builder = client.post(&url)
         .header("Content-Type", "application/json")
         .json(&test_body);
@@ -194,7 +199,61 @@ async fn test_provider(
                 .header("anthropic-version", "2023-06-01")
                 .json(&an_body);
         }
-        "opencode_free" | "mimo_free" => {
+        "mimo_free" => {
+            // Mimo requires JWT bootstrap + system marker + special headers
+            let bootstrap_url = "https://api.xiaomimimo.com/api/free-ai/bootstrap";
+            let hostname = hostname::get()
+                .map(|h| h.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "localhost".to_string());
+            let fingerprint = format!("airouter-{}", hostname);
+            
+            let bootstrap_resp = client.post(bootstrap_url)
+                .header("Content-Type", "application/json")
+                .body(format!(r#"{{"client":"{}"}}"#, fingerprint))
+                .send()
+                .await
+                .map_err(|e| err_500(&format!("Bootstrap failed: {}", e)))?;
+            
+            let status = bootstrap_resp.status();
+            if !status.is_success() {
+                let body = bootstrap_resp.text().await.unwrap_or_default();
+                return Err(err_500(&format!("Bootstrap HTTP {}: {}", status, body)));
+            }
+            
+            let bootstrap_data: serde_json::Value = bootstrap_resp.json().await
+                .map_err(|e| err_500(&format!("Bootstrap JSON error: {}", e)))?;
+            
+            let jwt = bootstrap_data.get("jwt")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| err_500("No JWT in bootstrap response"))?
+                .to_string();
+            
+            // Generate session affinity
+            use std::time::{SystemTime, UNIX_EPOCH};
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            SystemTime::now().hash(&mut hasher);
+            let session_id = format!("ses_{:024x}", hasher.finish());
+            
+            // Build request body with system marker
+            let mut mimo_body = serde_json::json!({
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are MiMoCode, an interactive CLI tool that helps users with software engineering tasks."},
+                    {"role": "user", "content": "test"}
+                ],
+                "max_tokens": 1
+            });
+            
+            req_builder = client.post(&url)
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", jwt))
+                .header("X-Mimo-Source", "mimocode-cli-free")
+                .header("x-session-affinity", &session_id)
+                .json(&mimo_body);
+        }
+        "opencode_free" => {
             req_builder = req_builder.header("x-opencode-client", "desktop");
         }
         _ => {

@@ -163,6 +163,16 @@ async fn api_request<T: serde::de::DeserializeOwned>(
     let resp: web_sys::Response = wasm_bindgen::JsCast::dyn_into(resp).map_err(|_| "Type error".to_string())?;
 
     if !resp.ok() && resp.status() != 201 {
+        // If 401 Unauthorized, token expired — redirect to login
+        if resp.status() == 401 {
+            if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                let _ = storage.remove_item("dashboard_token");
+                let _ = storage.remove_item("ai_token");
+            }
+            if let Some(loc) = web_sys::window().map(|w| w.location()) {
+                let _ = loc.set_href("/login");
+            }
+        }
         return Err(format!("HTTP {}", resp.status()));
     }
 
