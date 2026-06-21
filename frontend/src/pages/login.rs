@@ -101,7 +101,7 @@ pub fn Login() -> impl IntoView {
                             on:keydown=move|ev| {
                                 if ev.key() == "Enter" { do_login(); }
                             }
-                            disabled=logging_in.get()
+                            disabled=move || logging_in.get()
                             class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg
                                    text-sm text-primary placeholder-muted
                                    focus:border-accent focus:outline-none transition-colors
@@ -119,7 +119,7 @@ pub fn Login() -> impl IntoView {
 
                     <button
                         on:click=move|_| do_login()
-                        disabled=logging_in.get()
+                        disabled=move || logging_in.get()
                         class="w-full px-4 py-2.5 text-sm font-medium rounded-lg text-white
                                bg-accent hover:bg-accent-hover
                                active:scale-[0.97] transition-all duration-150
