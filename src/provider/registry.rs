@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::config::settings::ProviderConfig;
 use super::category::{ProviderCategory, category_for_type};
 use super::trait_def::Provider;
-use super::{openai, anthropic, openai_compat, opencode_free, mimo_free, groq, deepseek, gemini, openrouter, ollama};
+use super::{openai, anthropic, openai_compat, opencode_free, mimo_free, groq, deepseek, gemini, openrouter, ollama, grok_web, perplexity_web};
 
 // ─── ProviderRegistry ────────────────────────────────────────────
 
@@ -66,6 +66,8 @@ impl ProviderRegistry {
                 "gemini" => Box::new(gemini::GeminiProvider::new(cfg)),
                 "openrouter" => Box::new(openrouter::OpenRouterProvider::new(cfg)),
                 "ollama" => Box::new(ollama::OllamaProvider::new(cfg)),
+                "grok_web" => Box::new(grok_web::GrokWebProvider::new(cfg)),
+                "perplexity_web" => Box::new(perplexity_web::PerplexityWebProvider::new(cfg)),
                 other => {
                     tracing::warn!("Unknown provider type: {}, falling back to openai_compat", other);
                     Box::new(openai_compat::OpenAICompatProvider::new(cfg))

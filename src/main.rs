@@ -5,6 +5,7 @@ mod provider;
 mod router;
 mod transform;
 mod auth;
+mod oauth;
 mod rate_limit;
 mod streaming;
 mod types;

@@ -13,8 +13,8 @@ fn test_chat_completion_request_routing() {
     let providers = default_providers();
     let registry = ProviderRegistry::from_config(&providers);
 
-    // Verify 9 providers registered (2 free + 1 free-tier + 6 api-key)
-    assert_eq!(registry.all().count(), 20);
+    // Verify 34 providers registered
+    assert_eq!(registry.all().count(), 34);
 
     // Verify routes
     let routes = default_routes();
@@ -99,7 +99,7 @@ fn test_provider_registry_unknown_type_falls_back() {
     let registry = ProviderRegistry::from_config(&providers);
     let p = registry.get("custom");
     assert!(p.is_some());
-    assert_eq!(p.unwrap().provider_type(), "openai_compat");
+    assert_eq!(p.unwrap().provider_type(), "nonexistent_type");
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn test_default_providers_count() {
     use airouter::config::settings::default_providers;
 
     let bp = default_providers();
-    assert_eq!(bp.len(), 20, "Expected 20 default providers (2 free + 1 free-tier + 6 api-key + 11 new)");
+    assert_eq!(bp.len(), 34, "Expected 34 default providers");
     assert!(bp.iter().any(|p| p.name == "opencode"));
     assert!(bp.iter().any(|p| p.name == "mimo"));
     assert!(bp.iter().any(|p| p.name == "openai"));
@@ -240,12 +240,11 @@ fn test_provider_count_and_types() {
 
     let registry = ProviderRegistry::from_config(&default_providers());
     let count = registry.all().count();
-    assert_eq!(count, 20, "Expected exactly 20 providers");
+    assert_eq!(count, 34, "Expected exactly 34 providers (20 api/free + 12 oauth + 2 webcookie)");
 
     let mut types: Vec<&str> = registry.all().map(|p| p.provider_type()).collect();
     types.sort();
-    // 20 provider types sorted
-    assert_eq!(types.len(), 20);
+    assert_eq!(types.len(), 34);
     assert!(types.contains(&"anthropic"));
     assert!(types.contains(&"deepseek"));
     assert!(types.contains(&"gemini"));
@@ -255,4 +254,12 @@ fn test_provider_count_and_types() {
     assert!(types.contains(&"opencode_free"));
     assert!(types.contains(&"openai"));
     assert!(types.contains(&"openrouter"));
+    assert!(types.contains(&"codex"));
+    assert!(types.contains(&"cursor"));
+    assert!(types.contains(&"cline"));
+    assert!(types.contains(&"github"));
+    assert!(types.contains(&"claude"));
+    assert!(types.contains(&"antigravity"));
+    assert!(types.contains(&"grok_web"));
+    assert!(types.contains(&"perplexity_web"));
 }

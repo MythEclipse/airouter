@@ -409,6 +409,166 @@ pub fn default_providers() -> Vec<ProviderConfig> {
             extra_headers: HashMap::new(),
             capabilities: Vec::new(),
         },
+        // ── OAuth (login-based) ──────────────────────────────────────
+        ProviderConfig {
+            name: "codex".into(),
+            provider_type: "codex".into(),
+            api_key: String::new(),
+            base_url: "https://chatgpt.com/backend-api/codex".into(),
+            models: vec![
+                "gpt-5.5".into(), "gpt-5.4".into(), "gpt-5.4-mini".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
+        },
+        ProviderConfig {
+            name: "cursor".into(),
+            provider_type: "cursor".into(),
+            api_key: String::new(),
+            base_url: "https://api2.cursor.sh".into(),
+            models: vec![
+                "default".into(),
+                "claude-4.5-opus-high-thinking".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "cline".into(),
+            provider_type: "cline".into(),
+            api_key: String::new(),
+            base_url: "https://api.cline.bot/api/v1".into(),
+            models: vec![
+                "anthropic/claude-opus-4.7".into(),
+                "openai/gpt-5.4".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "github".into(),
+            provider_type: "github".into(),
+            api_key: String::new(),
+            base_url: "https://api.githubcopilot.com".into(),
+            models: vec![
+                "gpt-5.4".into(), "gpt-5.4-mini".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "claude".into(),
+            provider_type: "claude".into(),
+            api_key: String::new(),
+            base_url: "https://api.anthropic.com/v1".into(),
+            models: vec![
+                "claude-opus-4-8".into(),
+                "claude-sonnet-4-6".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "antigravity".into(),
+            provider_type: "antigravity".into(),
+            api_key: String::new(),
+            base_url: String::new(),
+            models: vec![
+                "gemini-3-flash-agent".into(),
+                "gemini-pro-agent".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "kilocode".into(),
+            provider_type: "kilocode".into(),
+            api_key: String::new(),
+            base_url: "https://api.kilo.ai/api".into(),
+            models: vec![
+                "anthropic/claude-sonnet-4-20250514".into(),
+                "google/gemini-2.5-flash".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "iflow".into(),
+            provider_type: "iflow".into(),
+            api_key: String::new(),
+            base_url: "https://apis.iflow.cn/v1".into(),
+            models: vec![
+                "qwen3-coder-plus".into(),
+                "qwen3-235b".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "kimi_coding".into(),
+            provider_type: "kimi_coding".into(),
+            api_key: String::new(),
+            base_url: "https://api.kimi.com/coding/v1".into(),
+            models: vec![
+                "kimi-k2.6".into(),
+                "kimi-k2.5-thinking".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "qwen".into(),
+            provider_type: "qwen".into(),
+            api_key: String::new(),
+            base_url: "https://portal.qwen.ai/v1".into(),
+            models: vec![
+                "qwen3-coder-plus".into(),
+                "qwen3-coder-flash".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
+        },
+        ProviderConfig {
+            name: "codebuddy".into(),
+            provider_type: "codebuddy".into(),
+            api_key: String::new(),
+            base_url: "https://copilot.tencent.com/v1".into(),
+            models: vec![],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "gitlab".into(),
+            provider_type: "gitlab".into(),
+            api_key: String::new(),
+            base_url: "https://gitlab.com/api/v4".into(),
+            models: vec![],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        // ── Web Cookie (browser session) ────────────────────────────
+        ProviderConfig {
+            name: "grok_web".into(),
+            provider_type: "grok_web".into(),
+            api_key: String::new(),
+            base_url: String::new(),
+            models: vec![
+                "grok-4".into(), "grok-3-thinking".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["thinking".into()],
+        },
+        ProviderConfig {
+            name: "perplexity_web".into(),
+            provider_type: "perplexity_web".into(),
+            api_key: String::new(),
+            base_url: String::new(),
+            models: vec![
+                "pplx-auto".into(), "pplx-sonar".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["web_search".into()],
+        },
     ]
 }
 
@@ -490,9 +650,18 @@ mod tests {
     #[test]
     fn test_default_providers_count() {
         let dp = default_providers();
-        assert_eq!(dp.len(), 20);
+        assert_eq!(dp.len(), 34);
         assert_eq!(dp[0].provider_type, "opencode_free");
         assert_eq!(dp[1].provider_type, "mimo_free");
+        // Verify OAuth/WebCookie providers are included
+        assert!(dp.iter().any(|p| p.provider_type == "codex"));
+        assert!(dp.iter().any(|p| p.provider_type == "cursor"));
+        assert!(dp.iter().any(|p| p.provider_type == "cline"));
+        assert!(dp.iter().any(|p| p.provider_type == "github"));
+        assert!(dp.iter().any(|p| p.provider_type == "claude"));
+        assert!(dp.iter().any(|p| p.provider_type == "antigravity"));
+        assert!(dp.iter().any(|p| p.provider_type == "grok_web"));
+        assert!(dp.iter().any(|p| p.provider_type == "perplexity_web"));
     }
 
     #[test]

@@ -8,6 +8,7 @@ use crate::types::openai::*;
 
 pub struct OpenAICompatProvider {
     name: String,
+    provider_type_name: String,
     api_key: String,
     base_url: String,
     model_list: Vec<String>,
@@ -19,6 +20,7 @@ impl OpenAICompatProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         Self {
             name: config.name.clone(),
+            provider_type_name: config.provider_type.clone(),
             api_key: config.api_key.clone(),
             base_url: config.base_url.trim_end_matches('/').to_string(),
             model_list: config.models.clone(),
@@ -39,7 +41,7 @@ impl OpenAICompatProvider {
 #[async_trait]
 impl Provider for OpenAICompatProvider {
     fn name(&self) -> &str { &self.name }
-    fn provider_type(&self) -> &str { "openai_compat" }
+    fn provider_type(&self) -> &str { &self.provider_type_name }
     fn models(&self) -> &[String] { &self.model_list }
 
     async fn chat_completion(&self, request: ChatCompletionRequest) -> Result<ChatCompletionResponse, ProviderError> {

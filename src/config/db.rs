@@ -4,6 +4,7 @@ use crate::config::settings::{Settings, ProviderConfig, RouteConfig, StrategyKin
 
 /// Run the database schema migration (idempotent).
 pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+    // Migration 001: Core tables
     let sql = include_str!("../../migrations/001_initial.sql");
     let stmts: Vec<&str> = sql
         .split(';')
@@ -11,13 +12,30 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), sea_orm::DbEr
         .filter(|s| !s.is_empty())
         .collect();
 
-    for stmt in stmts {
+    for stmt in &stmts {
         db.execute(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("{};", stmt),
         ))
         .await?;
     }
+
+    // Migration 002: OAuth provider connections
+    let sql2 = include_str!("../../migrations/002_oauth.sql");
+    let stmts2: Vec<&str> = sql2
+        .split(';')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    for stmt in &stmts2 {
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("{};", stmt),
+        ))
+        .await?;
+    }
+
     tracing::info!("Database migrations applied successfully");
     Ok(())
 }

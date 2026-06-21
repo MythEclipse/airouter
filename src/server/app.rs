@@ -46,6 +46,8 @@ pub fn create_router(
         .merge(api_routes)
         // Auth routes (login is public — handled in middleware)
         .merge(crate::api::auth::routes(state.clone()))
+        // OAuth routes (public for authorization flow)
+        .merge(crate::api::oauth::routes(state.clone()))
         .fallback_service(
             ServeDir::new(FRONTEND_DIST)
                 .append_index_html_on_directories(true)

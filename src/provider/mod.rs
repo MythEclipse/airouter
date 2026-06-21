@@ -9,6 +9,8 @@ pub mod deepseek;
 pub mod gemini;
 pub mod openrouter;
 pub mod ollama;
+pub mod grok_web;
+pub mod perplexity_web;
 
 // ─── Provider Framework ─────────────────────────────────────────
 pub mod category;
