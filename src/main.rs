@@ -60,6 +60,21 @@ async fn main() -> Result<(), anyhow::Error> {
     // ── Load key hashes for auth ────────────────────────────────────
     let key_hashes = Arc::new(ArcSwap::new(Arc::new(load_key_hashes(&db).await)));
 
+    // ── JWT secret (random, regenerated on each restart) ────────────
+    use rand::Rng;
+    let jwt_secret: String = (0..32).map(|_| {
+        let idx: usize = rand::thread_rng().gen_range(0..36);
+        b"0123456789abcdefghijklmnopqrstuvwxyz"[idx] as char
+    }).collect();
+    let jwt_secret = Arc::new(ArcSwap::new(Arc::new(jwt_secret)));
+    tracing::info!("JWT secret generated");
+
+    // ── Default password hash (sha256 of "123456") ──────────────────
+    let password_hash = Arc::new(ArcSwap::new(Arc::new(
+        crate::auth::sha2_hex("123456")
+    )));
+    tracing::info!("Default password hash loaded");
+
     // ── Redis-backed state components ───────────────────────────────
     let rate_limiter = rate_limit::RateLimitState::from_config(&settings.load().rate_limit);
     let request_tracker = tracker::RequestTracker::new();
@@ -83,6 +98,8 @@ async fn main() -> Result<(), anyhow::Error> {
         config: settings.clone(),
         registry: registry.clone(),
         key_hashes: key_hashes.clone(),
+        jwt_secret: jwt_secret.clone(),
+        password_hash: password_hash.clone(),
         rate_limiter,
         balancer,
         engine,

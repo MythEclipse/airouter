@@ -19,6 +19,10 @@ pub fn Providers() -> impl IntoView {
     let form_caps = create_rw_signal(Vec::new());
     let saving = create_rw_signal(false);
     let delete_id = create_rw_signal(Option::<String>::None);
+    // Expand & test state
+    let expanded_id = create_rw_signal(Option::<String>::None);
+    let model_test_results = create_rw_signal(std::collections::HashMap::<String, TestProviderResponse>::new());
+    let testing_model = create_rw_signal(Option::<String>::None); // "provider_id:model"
 
     // Load provider types for the dropdown
     spawn_local({
@@ -166,6 +170,39 @@ pub fn Providers() -> impl IntoView {
                     }
                     Err(e) => error.set(e),
                 }
+            }
+        });
+    };
+
+    let handle_test_model = move |provider_id: &str, model: &str| {
+        let pid = provider_id.to_string();
+        let mdl = model.to_string();
+        let key = format!("{}:{}", pid, mdl);
+        if testing_model.with(|t| t.as_deref() == Some(&key)) {
+            return;
+        }
+        testing_model.set(Some(key.clone()));
+        spawn_local({
+            let pid2 = pid.clone();
+            let mdl2 = mdl.clone();
+            let testing_model = testing_model.clone();
+            let model_test_results = model_test_results.clone();
+            async move {
+                let result = test_provider_model(&pid2, &mdl2).await;
+                match result {
+                    Ok(r) => {
+                        model_test_results.update(|m| { m.insert(key.clone(), r); });
+                    }
+                    Err(e) => {
+                        model_test_results.update(|m| {
+                            m.insert(key.clone(), TestProviderResponse {
+                                ok: false, latency_ms: 0, model: mdl2.clone(),
+                                error: Some(e),
+                            });
+                        });
+                    }
+                }
+                testing_model.set(None);
             }
         });
     };
@@ -398,77 +435,185 @@ pub fn Providers() -> impl IntoView {
                 }
             })}
 
-            // ─── Table ──────────────────────────────────────────────
+            // ─── Card Grid ──────────────────────────────────────────────
             {move || (!loading.get() && !show_form.get()).then(|| {
                 let provs = providers.get();
+                let is_expanded = expanded_id.get();
+                let testing = testing_model.get();
                 let empty = provs.is_empty();
                 view! {
-                    <div class="bg-surface border border-border-subtle rounded-[14px] overflow-hidden animate-fade-in-up">
-                        <table class="w-full">
-                            <thead>
-                                <tr class="bg-surface-2">
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Name"</th>
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Type"</th>
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Category"</th>
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Models"</th>
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Capabilities"</th>
-                                    <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Status"</th>
-                                    <th class="text-right px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Actions"</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-border-subtle/50">
+                    {if !empty {
+                        view! {
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in-up">
                                 {provs.into_iter().map(|p| {
                                     let pid = p.id.clone();
+                                    let pid_click = pid.clone();
                                     let (cb_cls, cb_label) = category_badge(&p.category);
+                                    let p_edit = p.clone();
+                                    let is_this_expanded = is_expanded.as_deref() == Some(&pid);
+                                    let models = p.models.clone();
+                                    let results = model_test_results.clone();
+
                                     view! {
-                                        <tr class="hover:bg-surface-2/50 transition-colors duration-100">
-                                            <td class="px-4 py-3 text-sm font-medium text-primary">{p.name.clone()}</td>
-                                            <td class="px-4 py-3">
-                                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-accent-bg text-accent border border-accent/30">
-                                                    {p.provider_type.clone()}
-                                                </span>
-                                            </td>
-                                            <td class="px-4 py-3">
-                                                <span class=cb_cls>{cb_label}</span>
-                                            </td>
-                                            <td class="px-4 py-3 text-sm text-secondary">{p.models.len().to_string()}</td>
-                                            <td class="px-4 py-3">
-                                                <div class="flex flex-wrap gap-1">
-                                                    {p.capabilities.iter().map(|c| {
-                                                        view! { <span class="inline-flex px-1.5 py-0.5 text-xs rounded bg-surface-2 text-muted">{c.clone()}</span> }
-                                                    }).collect::<Vec<_>>()}
+                                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 transition-all duration-200 hover:border-surface hover:-translate-y-0.5 hover:shadow-lg group"
+                                            on:click=move|_| {
+                                                let eid = expanded_id.get();
+                                                if eid.as_deref() == Some(&pid_click) {
+                                                    expanded_id.set(None);
+                                                } else {
+                                                    expanded_id.set(Some(pid_click.clone()));
+                                                }
+                                            }>
+                                            <div class="flex items-start justify-between mb-3">
+                                                <div class="flex items-center gap-2.5 min-w-0">
+                                                    <div class="w-9 h-9 rounded-lg shrink-0 flex items-center justify-center text-sm font-bold"
+                                                        style=format!("background-color: rgba(96,165,250,0.15); color: #60a5fa")>
+                                                        {p.name.chars().next().map(|c| c.to_string()).unwrap_or_default()}
+                                                    </div>
+                                                    <div class="min-w-0">
+                                                        <h3 class="font-semibold text-sm text-primary truncate">{p.name.clone()}</h3>
+                                                        <span class={cb_cls}>{cb_label}</span>
+                                                    </div>
                                                 </div>
-                                            </td>
-                                            <td class="px-4 py-3">{if p.enabled {
-                                                view! { <span class="inline-flex items-center gap-1 text-xs text-success"><span class="w-1.5 h-1.5 rounded-full bg-success"></span>"Active"</span> }
+                                                <div class="flex items-center gap-2 shrink-0">
+                                                    {if p.enabled {
+                                                        view! { <span class="flex items-center gap-1 text-xs text-success"><span class="w-1.5 h-1.5 rounded-full bg-success"></span>"Active"</span> }
+                                                    } else {
+                                                        view! { <span class="flex items-center gap-1 text-xs text-muted"><span class="w-1.5 h-1.5 rounded-full bg-muted"></span>"Disabled"</span> }
+                                                    }}
+                                                    <svg class="w-4 h-4 text-muted transition-transform duration-200" class:rotate-180=is_this_expanded fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                    </svg>
+                                                </div>
+                                            </div>
+
+                                            // ── Collapsed: summary ──────────────
+                                            {if !is_this_expanded {
+                                                view! {
+                                                    <>
+                                                        <div class="space-y-1.5 mb-3 text-xs">
+                                                            <div class="flex items-center justify-between">
+                                                                <span class="text-secondary">Type</span>
+                                                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-accent-bg text-accent border border-accent/30 truncate max-w-[140px]">
+                                                                    {p.provider_type.clone()}
+                                                                </span>
+                                                            </div>
+                                                            <div class="flex items-center justify-between">
+                                                                <span class="text-secondary">Models</span>
+                                                                <span class="text-primary font-mono font-medium">{p.models.len().to_string()}</span>
+                                                            </div>
+                                                        </div>
+                                                        {(!p.capabilities.is_empty()).then(|| {
+                                                            view! {
+                                                                <div class="flex flex-wrap gap-1 mb-3">
+                                                                    {p.capabilities.iter().map(|c| {
+                                                                        view! { <span class="inline-flex px-1.5 py-0.5 text-xs rounded bg-surface-2 text-muted">{c.clone()}</span> }
+                                                                    }).collect::<Vec<_>>()}
+                                                                </div>
+                                                            }
+                                                        })}
+                                                        <div class="flex items-center justify-between pt-3 border-t border-border-subtle">
+                                                            <button on:click=move|ev| { ev.stop_propagation(); show_edit_form(p_edit.clone()); }
+                                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150 opacity-0 group-hover:opacity-100">"Edit"</button>
+                                                            <button on:click=move|ev| { ev.stop_propagation(); delete_id.set(Some(pid.clone())); }
+                                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150 opacity-0 group-hover:opacity-100">"Delete"</button>
+                                                        </div>
+                                                    </>
+                                                }.into_view()
                                             } else {
-                                                view! { <span class="inline-flex items-center gap-1 text-xs text-muted"><span class="w-1.5 h-1.5 rounded-full bg-muted"></span>"Disabled"</span> }}}</td>
-                                            <td class="px-4 py-3 text-right">
-                                                <div class="flex gap-1.5 justify-end">
-                                                    <button on:click=move|_|show_edit_form(p.clone())
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg
-                                                               bg-transparent border border-surface text-secondary
-                                                               hover:text-primary hover:bg-surface-2
-                                                               active:scale-[0.97] transition-all duration-150">"Edit"</button>
-                                                    <button on:click=move|_|delete_id.set(Some(pid.clone()))
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg
-                                                               text-danger border border-danger/30
-                                                               hover:bg-danger-bg active:scale-[0.97] transition-all duration-150">"Delete"</button>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                // ── Expanded: model list ────────
+                                                view! {
+                                                    <>
+                                                        <div class="text-xs">
+                                                            <div class="flex items-center justify-between mb-2">
+                                                                <span class="text-secondary font-medium">"Base URL"</span>
+                                                                <code class="text-primary font-mono text-[10px] truncate max-w-[180px]">{p.base_url.clone()}</code>
+                                                            </div>
+                                                            <div class="pt-2 border-t border-border-subtle mb-2">
+                                                                <p class="text-xs text-secondary font-medium mb-2">"Models"</p>
+                                                            </div>
+                                                        </div>
+                                                        {if models.is_empty() {
+                                                            view! { <p class="text-xs text-muted italic mb-3">"No models configured"</p> }.into_view()
+                                                        } else {
+                                                            view! {
+                                                                <div class="flex flex-col gap-1.5 mb-3 max-h-[260px] overflow-y-auto">
+                                                                    {models.into_iter().map(|model_name| {
+                                                                        let m_key = format!("{}:{}", pid, model_name);
+                                                                        let test_result = results.with(|m| m.get(&m_key).cloned());
+                                                                        let test_ok = test_result.as_ref().map(|r| r.ok).unwrap_or(false);
+                                                                        let is_testing = testing.as_ref().map(|t| t == &m_key).unwrap_or(false);
+                                                                        let mn = model_name.clone();
+                                                                        let p_id = pid.clone();
+                                                                        view! {
+                                                                            <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 transition-colors">
+                                                                                <code class="text-xs font-mono text-primary truncate">{model_name.clone()}</code>
+                                                                                <div class="flex items-center gap-1.5 shrink-0">
+                                                                                    {test_result.as_ref().map(|r| {
+                                                                                        if r.ok {
+                                                                                            view! { <span class="text-[10px] text-success font-mono">{r.latency_ms.to_string() + "ms"}</span> }.into_view()
+                                                                                        } else {
+                                                                                            let err_title = r.error.clone().unwrap_or_default();
+                                                                                            view! { <span class="text-[10px] text-danger" title=err_title>"FAIL"</span> }.into_view()
+                                                                                        }
+                                                                                    })}
+                                                                                    <button on:click=move|ev| {
+                                                                                        ev.stop_propagation();
+                                                                                        handle_test_model(&p_id, &mn);
+                                                                                    } disabled=is_testing
+                                                                                        class="px-2 py-1 text-[10px] font-medium rounded-lg border 
+                                                                                               transition-all duration-150 flex items-center gap-1
+                                                                                               active:scale-[0.97]
+                                                                                               disabled:opacity-50"
+                                                                                        class=if is_testing {
+                                                                                            "bg-accent/20 border-accent/30 text-accent"
+                                                                                        } else if test_ok {
+                                                                                            "bg-green-500/10 border-green-500/30 text-success"
+                                                                                        } else {
+                                                                                            "bg-surface-2 border-border-subtle text-secondary hover:text-primary hover:bg-surface-3"
+                                                                                        }>
+                                                                                        {if is_testing {
+                                                                                            view! {
+                                                                                                <>
+                                                                                                    <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                                                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                                                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                                                                                    </svg>
+                                                                                                    "Test"
+                                                                                                </>
+                                                                                            }.into_view()
+                                                                                        } else {
+                                                                                            view! { <>"Test"</> }.into_view()
+                                                                                        }}
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+                                                                    }).collect::<Vec<_>>()}
+                                                                </div>
+                                                            }.into_view()
+                                                        }}
+                                                        <div class="flex items-center justify-between pt-3 border-t border-border-subtle">
+                                                            <button on:click=move|ev| { ev.stop_propagation(); show_edit_form(p_edit.clone()); }
+                                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150">"Edit"</button>
+                                                            <button on:click=move|ev| { ev.stop_propagation(); delete_id.set(Some(pid.clone())); }
+                                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150">"Delete"</button>
+                                                        </div>
+                                                    </>
+                                                }.into_view()
+                                            }}
+                                        </div>
                                     }
                                 }).collect::<Vec<_>>()}
-                            </tbody>
-                        </table>
-                        {empty.then(|| {
-                            view! {
-                                <div class="text-center py-12 text-muted text-sm">
-                                    "No providers configured yet."
-                                </div>
-                            }
-                        })}
-                    </div>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <div class="text-center py-12 bg-surface border border-border-subtle rounded-[14px]">
+                                <p class="text-muted text-sm">"No providers configured yet."</p>
+                            </div>
+                        }.into_view()
+                    }}
                 }
             })}
         </div>

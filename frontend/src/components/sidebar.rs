@@ -64,7 +64,22 @@ pub fn Sidebar() -> impl IntoView {
             </ul>
 
             // Footer
-            <div class="mt-auto p-6 border-t border-border-subtle">
+            <div class="mt-auto p-6 border-t border-border-subtle flex flex-col gap-3">
+                <button on:click=move|_| {
+                    if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                        let _ = storage.remove_item("dashboard_token");
+                        let _ = storage.remove_item("ai_token");
+                    }
+                    if let Some(loc) = web_sys::window().map(|w| w.location()) {
+                        let _ = loc.set_href("/login");
+                    }
+                }
+                    class="flex items-center gap-2 text-xs text-secondary hover:text-danger transition-colors px-2 py-1.5 rounded-lg hover:bg-danger-bg/50 w-full">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    "Logout"
+                </button>
                 <div class="flex items-center gap-2 text-xs text-muted/60">
                     <span class="w-2 h-2 rounded-full bg-success animate-pulse-soft"></span>
                     "System Online"

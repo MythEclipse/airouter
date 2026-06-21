@@ -44,6 +44,8 @@ pub fn create_router(
         .route("/metrics", get(handle_metrics))
         .layer(from_fn(request_id_middleware))
         .merge(api_routes)
+        // Auth routes (login is public — handled in middleware)
+        .merge(crate::api::auth::routes(state.clone()))
         .fallback_service(
             ServeDir::new(FRONTEND_DIST)
                 .append_index_html_on_directories(true)
@@ -61,6 +63,8 @@ pub struct AppState {
     pub config: Arc<ArcSwap<crate::config::settings::Settings>>,
     pub registry: Arc<ArcSwap<provider::ProviderRegistry>>,
     pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
+    pub jwt_secret: Arc<ArcSwap<String>>,
+    pub password_hash: Arc<ArcSwap<String>>,
     pub rate_limiter: crate::rate_limit::RateLimitState,
     pub balancer: Arc<LoadBalancer>,
     pub engine: Arc<RouteEngine>,

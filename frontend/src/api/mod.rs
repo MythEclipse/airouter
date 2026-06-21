@@ -122,7 +122,12 @@ pub struct RateLimitSettingsData {
 
 // ─── Auth token ──────────────────────────────────────────────────
 
-static AUTH_TOKEN: &str = "Bearer sk-test-abc123";
+fn get_auth_token() -> String {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item("dashboard_token").ok().flatten())
+        .unwrap_or_default()
+}
 
 // ─── Generic API helper ──────────────────────────────────────────
 
@@ -141,8 +146,11 @@ async fn api_request<T: serde::de::DeserializeOwned>(
 
     let request = web_sys::Request::new_with_str_and_init(path, &opts)
         .map_err(|e| format!("Request error: {:?}", e))?;
-    request.headers().set("Authorization", AUTH_TOKEN)
-        .map_err(|e| format!("Header error: {:?}", e))?;
+    let token = get_auth_token();
+    if !token.is_empty() {
+        request.headers().set("Authorization", &format!("Bearer {}", token))
+            .map_err(|e| format!("Header error: {:?}", e))?;
+    }
     if body.is_some() {
         request.headers().set("Content-Type", "application/json")
             .map_err(|e| format!("Header error: {:?}", e))?;
@@ -213,6 +221,25 @@ pub async fn update_route(id: &str, data: &str) -> Result<RouteDetail, String> {
 pub async fn delete_route(id: &str) -> Result<(), String> {
     let _: serde_json::Value = api_request("DELETE", &format!("/api/dashboard/routes/{}", id), None).await?;
     Ok(())
+}
+
+// ─── Provider Test ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TestProviderResponse {
+    pub ok: bool,
+    pub latency_ms: u64,
+    pub model: String,
+    pub error: Option<String>,
+}
+
+pub async fn test_provider_model(provider_id: &str, model: &str) -> Result<TestProviderResponse, String> {
+    let body = serde_json::json!({ "model": model }).to_string();
+    api_request::<TestProviderResponse>(
+        "POST",
+        &format!("/api/dashboard/providers/{}/test", provider_id),
+        Some(&body),
+    ).await
 }
 
 // ─── API Keys CRUD ───────────────────────────────────────────────

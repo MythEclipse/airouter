@@ -421,16 +421,11 @@ pub fn RouteRules() -> impl IntoView {
             {move || (!loading.get() && !show_form.get()).then(|| {
                 let rs = route_list.get();
                 let cid = copied_id.get();
+                let empty = rs.is_empty();
                 view! {
-                    <div class="bg-surface border border-border-subtle rounded-[14px] overflow-hidden animate-fade-in-up">
-                        <table class="w-full">
-                            <thead><tr class="bg-surface-2">
-                                <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Model"</th>
-                                <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Mode"</th>
-                                <th class="text-left px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Providers"</th>
-                                <th class="text-right px-4 py-3 text-xs font-semibold text-secondary uppercase tracking-wider">"Actions"</th>
-                            </tr></thead>
-                            <tbody class="divide-y divide-surface/50">
+                    {if !empty {
+                        view! {
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-fade-in-up">
                                 {rs.into_iter().map(|r| {
                                     let rid = r.id.clone();
                                     let is_expanded = expanded.with(|e| e.contains(&rid));
@@ -442,102 +437,110 @@ pub fn RouteRules() -> impl IntoView {
                                     let curl_id = rid.clone();
                                     let curl_for_btn = curl_id.clone();
                                     let curl_cid = curl_id.clone();
+                                    let r_edit = r.clone();
                                     view! {
-                                        <tr class="hover:bg-surface-2/50 transition-colors duration-100">
-                                            <td class="px-4 py-3">
-                                                <div class="flex items-center gap-2">
-                                                    <code class="text-sm font-mono text-accent">{r.model.clone()}</code>
-                                                    {has_combo.then(|| {
-                                                        let rid2 = rid.clone();
-                                                        view! {
-                                                            <button on:click=move|_| {
-                                                                let mut s = expanded.get();
-                                                                if s.contains(&rid2) {
-                                                                    s.remove(&rid2);
-                                                                } else {
-                                                                    s.insert(rid2.clone());
-                                                                }
-                                                                expanded.set(s);
-                                                            } class="text-muted hover:text-primary transition-colors">
-                                                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                                        d=if is_expanded { "M5 15l7-7 7 7" } else { "M19 9l-7 7-7-7" }/>
-                                                                </svg>
-                                                            </button>
-                                                        }
-                                                    })}
-                                                    {(!has_combo && r.strategy != "single").then(||
-                                                        view! { <span class="text-xs text-warning/60">"(default)"</span> }
-                                                    )}
+                                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 transition-all duration-200 hover:border-surface hover:-translate-y-0.5 hover:shadow-lg group">
+                                            <div class="flex items-start justify-between gap-2 mb-3">
+                                                <div class="min-w-0 flex-1">
+                                                    <code class="text-sm font-mono text-accent font-semibold break-all">{r.model.clone()}</code>
                                                 </div>
-                                            </td>
-                                            <td class="px-4 py-3"><span class=badge_cls>{badge_label}</span></td>
-                                            <td class="px-4 py-3 text-sm text-secondary truncate max-w-[260px]">{prov_str}</td>
-                                            <td class="px-4 py-3 text-right">
-                                                <div class="flex gap-1.5 justify-end items-center">
-                                                    <button on:click=move|_| {
-                                                        let curl2 = curl.clone();
-                                                        let fbtn = curl_for_btn.clone();
-                                                        let ccid = curl_cid.clone();
-                                                        spawn_local(async move {
-                                                            if let Some(clip) = web_sys::window().map(|w| w.navigator().clipboard()) {
-                                                                let _ = clip.write_text(&curl2);
-                                                                copied_id.set(Some(fbtn));
-                                                                let cid2 = copied_id;
-                                                                gloo_timers::future::TimeoutFuture::new(2000).await;
-                                                                if cid2.with(|v| *v == Some(ccid)) { cid2.set(None); }
+                                                <span class=badge_cls>{badge_label}</span>
+                                            </div>
+
+                                            <div class="space-y-1.5 mb-3 text-xs">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <span class="text-secondary shrink-0">Providers</span>
+                                                    <span class="text-primary text-right truncate max-w-[200px]">{prov_str}</span>
+                                                </div>
+                                            </div>
+
+                                            {has_combo.then(|| {
+                                                let rid2 = rid.clone();
+                                                view! {
+                                                    <>
+                                                        <button on:click=move|_| {
+                                                            let mut s = expanded.get();
+                                                            if s.contains(&rid2) { s.remove(&rid2); } else { s.insert(rid2.clone()); }
+                                                            expanded.set(s);
+                                                        } class="flex items-center gap-1 text-xs text-muted hover:text-primary transition-colors mb-2">
+                                                            <svg class="w-3.5 h-3.5 transition-transform" class:rotate-180=is_expanded fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                            </svg>
+                                                            {if is_expanded { "Hide Config" } else { "Config" }}
+                                                        </button>
+                                                    </>
+                                                }
+                                            })}
+
+                                            {is_expanded.then(|| {
+                                                view! {
+                                                    <div class="animate-fade-in-up grid grid-cols-2 gap-2 mb-3 p-3 bg-surface-2 rounded-lg">
+                                                        {combo_items.into_iter().map(|(label, val)| {
+                                                            view! {
+                                                                <div>
+                                                                    <p class="text-[10px] text-muted uppercase tracking-wider mb-0.5">{label}</p>
+                                                                    <p class="text-xs font-mono text-primary">{val}</p>
+                                                                </div>
                                                             }
-                                                        });
-                                                    } class="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent-bg transition-all duration-150 flex items-center gap-1">
-                                                        {if cid.as_ref() == Some(&curl_id) {
-                                                            view! { <>
-                                                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                                                </svg>
-                                                                "Copied!"
-                                                            </> }
-                                                        } else {
-                                                            view! { <>
-                                                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
-                                                                </svg>
-                                                                "cURL"
-                                                            </> }
-                                                        }}
-                                                    </button>
-                                                    <button on:click=move|_|show_edit_form(r.clone())
+                                                        }).collect::<Vec<_>>()}
+                                                    </div>
+                                                }
+                                            })}
+
+                                            {(!has_combo && r.strategy != "single").then(||
+                                                view! { <p class="text-xs text-warning/60 mb-2">"(default config)"</p> }
+                                            )}
+
+                                            <div class="flex items-center justify-between pt-3 border-t border-border-subtle">
+                                                <button on:click=move|_| {
+                                                    let curl2 = curl.clone();
+                                                    let fbtn = curl_for_btn.clone();
+                                                    let ccid = curl_cid.clone();
+                                                    spawn_local(async move {
+                                                        if let Some(clip) = web_sys::window().map(|w| w.navigator().clipboard()) {
+                                                            let _ = clip.write_text(&curl2);
+                                                            copied_id.set(Some(fbtn));
+                                                            let cid2 = copied_id;
+                                                            gloo_timers::future::TimeoutFuture::new(2000).await;
+                                                            if cid2.with(|v| *v == Some(ccid)) { cid2.set(None); }
+                                                        }
+                                                    });
+                                                } class="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent-bg transition-all duration-150 flex items-center gap-1">
+                                                    {if cid.as_ref() == Some(&curl_id) {
+                                                        view! { <>
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                                            </svg>
+                                                            "Copied!"
+                                                        </> }
+                                                    } else {
+                                                        view! { <>
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                                            </svg>
+                                                            "cURL"
+                                                        </> }
+                                                    }}
+                                                </button>
+                                                <div class="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button on:click=move|_|show_edit_form(r_edit.clone())
                                                         class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150">"Edit"</button>
                                                     <button on:click=move|_|delete_id.set(Some(rid.clone()))
                                                         class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150">"Delete"</button>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                        {is_expanded.then(|| {
-                                            view! {
-                                                <tr class="bg-surface-2/50">
-                                                    <td colspan="4" class="px-4 py-3">
-                                                        <div class="animate-fade-in-up grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                                                            {combo_items.into_iter().map(|(label, val)| {
-                                                                view! {
-                                                                    <div class="bg-surface border border-border-subtle rounded-lg p-3">
-                                                                        <p class="text-[10px] text-muted uppercase tracking-wider mb-1">{label}</p>
-                                                                        <p class="text-sm font-mono text-primary">{val}</p>
-                                                                    </div>
-                                                                }
-                                                            }).collect::<Vec<_>>()}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        })}
+                                            </div>
+                                        </div>
                                     }
                                 }).collect::<Vec<_>>()}
-                            </tbody>
-                        </table>
-                        {route_list.with(|rs| rs.is_empty()).then(|| {
-                            view! { <div class="text-center py-12 text-muted text-sm">"No routes configured yet."</div> }
-                        })}
-                    </div>
+                            </div>
+                        }.into_view()
+                    } else {
+                        view! {
+                            <div class="text-center py-12 bg-surface border border-border-subtle rounded-[14px]">
+                                <p class="text-muted text-sm">"No routes configured yet."</p>
+                            </div>
+                        }.into_view()
+                    }}
                 }
             })}
         </div>
