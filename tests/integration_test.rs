@@ -14,7 +14,7 @@ fn test_chat_completion_request_routing() {
     let registry = ProviderRegistry::from_config(&providers);
 
     // Verify 9 providers registered (2 free + 1 free-tier + 6 api-key)
-    assert_eq!(registry.all().count(), 9);
+    assert_eq!(registry.all().count(), 20);
 
     // Verify routes
     let routes = default_routes();
@@ -209,7 +209,7 @@ fn test_default_providers_count() {
     use airouter::config::settings::default_providers;
 
     let bp = default_providers();
-    assert_eq!(bp.len(), 9, "Expected 9 default providers (2 free + 1 free-tier + 6 api-key)");
+    assert_eq!(bp.len(), 20, "Expected 20 default providers (2 free + 1 free-tier + 6 api-key + 11 new)");
     assert!(bp.iter().any(|p| p.name == "opencode"));
     assert!(bp.iter().any(|p| p.name == "mimo"));
     assert!(bp.iter().any(|p| p.name == "openai"));
@@ -240,12 +240,12 @@ fn test_provider_count_and_types() {
 
     let registry = ProviderRegistry::from_config(&default_providers());
     let count = registry.all().count();
-    assert_eq!(count, 9, "Expected exactly 9 providers");
+    assert_eq!(count, 20, "Expected exactly 20 providers");
 
     let mut types: Vec<&str> = registry.all().map(|p| p.provider_type()).collect();
     types.sort();
-    // 9 provider types sorted
-    assert_eq!(types.len(), 9);
+    // 20 provider types sorted
+    assert_eq!(types.len(), 20);
     assert!(types.contains(&"anthropic"));
     assert!(types.contains(&"deepseek"));
     assert!(types.contains(&"gemini"));

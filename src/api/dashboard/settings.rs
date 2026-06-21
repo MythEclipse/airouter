@@ -9,10 +9,25 @@ use sea_orm::EntityTrait;
 use crate::server::app::AppState;
 use super::types::*;
 use super::helpers::{err_400, err_500};
+use crate::provider::{KNOWN_PROVIDER_TYPES, ProviderCategory, category_to_str};
+
+async fn list_provider_types() -> Json<Vec<ProviderTypeInfo>> {
+    let types: Vec<ProviderTypeInfo> = KNOWN_PROVIDER_TYPES.iter().map(|(id, name, cat)| {
+        ProviderTypeInfo {
+            id: id.to_string(),
+            display_name: name.to_string(),
+            category: category_to_str(*cat).to_string(),
+            category_label: cat.display_name().to_string(),
+            needs_api_key: cat.needs_api_key(),
+        }
+    }).collect();
+    Json(types)
+}
 
 pub fn routes() -> axum::Router<Arc<AppState>> {
     axum::Router::new()
         .route("/api/dashboard/settings", get(get_settings).put(update_settings))
+        .route("/api/dashboard/provider-types", get(list_provider_types))
 }
 
 async fn get_settings(

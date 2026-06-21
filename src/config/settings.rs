@@ -270,6 +270,145 @@ pub fn default_providers() -> Vec<ProviderConfig> {
             extra_headers: HashMap::new(),
             capabilities: Vec::new(),
         },
+        // ── MORE FREE TIER ──────────────────────────────────────────
+        ProviderConfig {
+            name: "mistral".into(),
+            provider_type: "mistral".into(),
+            api_key: String::new(),
+            base_url: "https://api.mistral.ai/v1".into(),
+            models: vec![
+                "mistral-large-latest".into(),
+                "codestral-latest".into(),
+                "mistral-embed".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["vision".into()],
+        },
+        ProviderConfig {
+            name: "together".into(),
+            provider_type: "together".into(),
+            api_key: String::new(),
+            base_url: "https://api.together.xyz/v1".into(),
+            models: vec![
+                "meta-llama/Llama-3.3-70B-Instruct-Turbo".into(),
+                "deepseek-ai/DeepSeek-R1".into(),
+                "Qwen/Qwen3-235B-A22B".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "fireworks".into(),
+            provider_type: "fireworks".into(),
+            api_key: String::new(),
+            base_url: "https://api.fireworks.ai/inference/v1".into(),
+            models: vec![
+                "accounts/fireworks/models/deepseek-v3p1".into(),
+                "accounts/fireworks/models/llama-v3p3-70b-instruct".into(),
+                "accounts/fireworks/models/qwen3-235b-a22b".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "xai".into(),
+            provider_type: "xai".into(),
+            api_key: String::new(),
+            base_url: "https://api.x.ai/v1".into(),
+            models: vec![
+                "grok-4".into(),
+                "grok-3".into(),
+                "grok-4-fast-reasoning".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "cohere".into(),
+            provider_type: "cohere".into(),
+            api_key: String::new(),
+            base_url: "https://api.cohere.ai/v1".into(),
+            models: vec![
+                "command-r-plus".into(),
+                "command-r".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "perplexity".into(),
+            provider_type: "perplexity".into(),
+            api_key: String::new(),
+            base_url: "https://api.perplexity.ai".into(),
+            models: vec![
+                "sonar-pro".into(),
+                "sonar".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: vec!["web_search".into()],
+        },
+        ProviderConfig {
+            name: "nvidia".into(),
+            provider_type: "nvidia".into(),
+            api_key: String::new(),
+            base_url: "https://integrate.api.nvidia.com/v1".into(),
+            models: vec![
+                "minimaxai/minimax-m2.7".into(),
+                "z-ai/glm4.7".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "siliconflow".into(),
+            provider_type: "siliconflow".into(),
+            api_key: String::new(),
+            base_url: "https://api.siliconflow.com/v1".into(),
+            models: vec![
+                "deepseek-ai/DeepSeek-V4-Pro".into(),
+                "deepseek-ai/DeepSeek-V4-Flash".into(),
+                "Qwen/Qwen3.5-397B-A17B".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "cerebras".into(),
+            provider_type: "cerebras".into(),
+            api_key: String::new(),
+            base_url: "https://api.cerebras.ai/v1".into(),
+            models: vec![
+                "llama-3.3-70b".into(),
+                "llama-4-scout-17b-16e-instruct".into(),
+                "qwen-3-235b-a22b-instruct-2507".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "hyperbolic".into(),
+            provider_type: "hyperbolic".into(),
+            api_key: String::new(),
+            base_url: "https://api.hyperbolic.xyz/v1".into(),
+            models: vec![
+                "Qwen/QwQ-32B".into(),
+                "deepseek-ai/DeepSeek-R1".into(),
+                "meta-llama/Llama-3.3-70B-Instruct".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
+        ProviderConfig {
+            name: "cloudflare".into(),
+            provider_type: "cloudflare".into(),
+            api_key: String::new(),
+            base_url: String::new(),  // requires account_id in URL
+            models: vec![
+                "@cf/meta/llama-3.3-70b-instruct-fp8-fast".into(),
+            ],
+            extra_headers: HashMap::new(),
+            capabilities: Vec::new(),
+        },
     ]
 }
 
@@ -300,6 +439,28 @@ pub fn default_routes() -> Vec<RouteConfig> {
         RouteConfig { model: "llama3.2".into(), strategy: StrategyKind::Single, provider: Some("ollama".into()), providers: None, combo: None },
         // Wildcard
         RouteConfig { model: "*".into(), strategy: StrategyKind::Fallback, provider: None, providers: Some(vec!["opencode".into(), "groq".into(), "ollama".into()]), combo: None },
+        // Mistral
+        RouteConfig { model: "mistral-large-latest".into(), strategy: StrategyKind::Single, provider: Some("mistral".into()), providers: None, combo: None },
+        RouteConfig { model: "codestral-latest".into(), strategy: StrategyKind::Single, provider: Some("mistral".into()), providers: None, combo: None },
+        // Together
+        RouteConfig { model: "meta-llama/Llama-3.3-70B-Instruct-Turbo".into(), strategy: StrategyKind::Single, provider: Some("together".into()), providers: None, combo: None },
+        RouteConfig { model: "deepseek-ai/DeepSeek-R1".into(), strategy: StrategyKind::Fallback, provider: None, providers: Some(vec!["together".into(), "hyperbolic".into(), "siliconflow".into()]), combo: None },
+        RouteConfig { model: "Qwen/Qwen3-235B-A22B".into(), strategy: StrategyKind::Single, provider: Some("together".into()), providers: None, combo: None },
+        // Fireworks
+        RouteConfig { model: "accounts/fireworks/models/deepseek-v3p1".into(), strategy: StrategyKind::Single, provider: Some("fireworks".into()), providers: None, combo: None },
+        // xAI
+        RouteConfig { model: "grok-4".into(), strategy: StrategyKind::Single, provider: Some("xai".into()), providers: None, combo: None },
+        // NVIDIA
+        RouteConfig { model: "minimaxai/minimax-m2.7".into(), strategy: StrategyKind::Single, provider: Some("nvidia".into()), providers: None, combo: None },
+        // SiliconFlow
+        RouteConfig { model: "deepseek-ai/DeepSeek-V4-Pro".into(), strategy: StrategyKind::Single, provider: Some("siliconflow".into()), providers: None, combo: None },
+        RouteConfig { model: "deepseek-ai/DeepSeek-V4-Flash".into(), strategy: StrategyKind::Single, provider: Some("siliconflow".into()), providers: None, combo: None },
+        // Hyperbolic
+        RouteConfig { model: "Qwen/QwQ-32B".into(), strategy: StrategyKind::Single, provider: Some("hyperbolic".into()), providers: None, combo: None },
+        // Cerebras
+        RouteConfig { model: "llama-3.3-70b".into(), strategy: StrategyKind::Single, provider: Some("cerebras".into()), providers: None, combo: None },
+        // DeepSeek R1 fallback across providers
+        RouteConfig { model: "deepseek-reasoner".into(), strategy: StrategyKind::Fallback, provider: None, providers: Some(vec!["deepseek".into(), "together".into(), "siliconflow".into()]), combo: None },
     ]
 }
 
@@ -329,7 +490,7 @@ mod tests {
     #[test]
     fn test_default_providers_count() {
         let dp = default_providers();
-        assert_eq!(dp.len(), 9);
+        assert_eq!(dp.len(), 20);
         assert_eq!(dp[0].provider_type, "opencode_free");
         assert_eq!(dp[1].provider_type, "mimo_free");
     }
@@ -337,7 +498,7 @@ mod tests {
     #[test]
     fn test_default_routes_count() {
         let dr = default_routes();
-        assert_eq!(dr.len(), 15);
+        assert_eq!(dr.len(), 28);
     }
 
     #[test]

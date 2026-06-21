@@ -71,6 +71,32 @@ pub const KNOWN_PROVIDER_TYPES: &[(&str, &str, ProviderCategory)] = &[
     ("cohere",          "Cohere",                    ProviderCategory::ApiKey),
     ("perplexity",      "Perplexity AI",             ProviderCategory::ApiKey),
     ("xai",             "xAI (Grok)",                ProviderCategory::ApiKey),
+    // ── New from 9router registry ────────────────────────────────
+    ("siliconflow",    "SiliconFlow",               ProviderCategory::ApiKey),
+    ("cerebras",       "Cerebras",                  ProviderCategory::ApiKey),
+    ("hyperbolic",     "Hyperbolic",                ProviderCategory::ApiKey),
+    ("nebius",         "Nebius AI",                 ProviderCategory::ApiKey),
+    ("nvidia",         "NVIDIA NIM",                ProviderCategory::FreeTier),
+    ("chutes",         "Chutes AI",                 ProviderCategory::ApiKey),
+    ("kimi",           "Kimi (Moonshot)",           ProviderCategory::ApiKey),
+    ("glm_cn",         "GLM (China)",               ProviderCategory::ApiKey),
+    ("blackbox",       "Blackbox",                  ProviderCategory::ApiKey),
+    // ── OAuth (login-based) ──────────────────────────────────────
+    ("antigravity",     "Antigravity",              ProviderCategory::Oauth),
+    ("claude",          "Claude Code (OAuth)",      ProviderCategory::Oauth),
+    ("cline",           "Cline (OAuth)",            ProviderCategory::Oauth),
+    ("codebuddy",       "CodeBuddy (OAuth)",        ProviderCategory::Oauth),
+    ("codex",           "Codex CLI (OAuth)",        ProviderCategory::Oauth),
+    ("cursor",          "Cursor (OAuth)",           ProviderCategory::Oauth),
+    ("github",          "GitHub Copilot (OAuth)",   ProviderCategory::Oauth),
+    ("gitlab",          "GitLab (OAuth)",           ProviderCategory::Oauth),
+    ("iflow",           "iFlytek (iFLow OAuth)",    ProviderCategory::Oauth),
+    ("kilocode",        "KiloCode (OAuth)",         ProviderCategory::Oauth),
+    ("kimi_coding",     "Kimi Coding (OAuth)",      ProviderCategory::Oauth),
+    ("qwen",            "Qwen (OAuth)",             ProviderCategory::Oauth),
+    // ── Web Cookie (browser session) ─────────────────────────────
+    ("grok_web",        "Grok Web (Cookie)",        ProviderCategory::WebCookie),
+    ("perplexity_web",  "Perplexity Web (Cookie)",  ProviderCategory::WebCookie),
 ];
 
 /// Look up the category for a provider type string.
