@@ -2,9 +2,10 @@ use leptos::*;
 use crate::api::*;
 use crate::components::tag_input::TagInput;
 use crate::components::skeleton::SkeletonTable;
-use crate::components::provider_icon::{ProviderIcon, category_style, category_accent};
+use crate::components::provider_icon::category_accent;
+use crate::components::provider_card::ProviderCard;
+use wasm_bindgen::prelude::*;
 
-// ─── Category order for sections ─────────────────────────────────
 const CATEGORY_ORDER: &[&str] = &["free", "free-tier", "api-key", "oauth", "web-cookie"];
 const CATEGORY_LABELS: &[(&str, &str)] = &[
     ("free",       "Free (No Key)"),
@@ -19,6 +20,16 @@ fn section_label(cat: &str) -> String {
         if *c == cat { return label.to_string(); }
     }
     cat.to_string()
+}
+
+// ─── OAuth flow state ────────────────────────────────────────────
+#[derive(Debug, Clone)]
+enum OAuthFlowState {
+    Idle,
+    Authorizing { provider: String },
+    WaitingDevice { provider: String, device_code: String, interval: u64 },
+    Done,
+    Error(String),
 }
 
 #[component]
@@ -42,6 +53,12 @@ pub fn Providers() -> impl IntoView {
     let model_test_results = create_rw_signal(std::collections::HashMap::<String, TestProviderResponse>::new());
     let testing_model = create_rw_signal(Option::<String>::None);
 
+    // OAuth specific
+    let oauth_flow = create_rw_signal(OAuthFlowState::Idle);
+    let connections = create_rw_signal(Vec::<OAuthConnectionItem>::new());
+    let oauth_device_code_data = create_rw_signal(Option::<DeviceCodeData>::None);
+
+    // ─── Load types ────────────────────────────────────────────────
     spawn_local({
         let pt = provider_types.clone();
         let pt_loaded = provider_types_loaded.clone();
@@ -65,24 +82,203 @@ pub fn Providers() -> impl IntoView {
                 }
             }
         });
+        spawn_local({
+            let connections = connections.clone();
+            async move {
+                if let Ok(data) = fetch_connections().await {
+                    connections.set(data);
+                }
+            }
+        });
     };
     load();
 
+    // ─── OAuth popup callback listener ──────────────────────────────
+    {
+        use wasm_bindgen::prelude::Closure;
+        let oauth_flow = oauth_flow.clone();
+        let providers = providers.clone();
+        let loading = loading.clone();
+        let error = error.clone();
+        let connections = connections.clone();
+        if let Some(w) = web_sys::window() {
+            let closure = Closure::<dyn Fn(web_sys::MessageEvent)>::new(move |ev: web_sys::MessageEvent| {
+                let val = ev.data();
+                if !val.is_object() { return; }
+                let get_str = |key: &str| -> Option<String> {
+                    js_sys::Reflect::get(&val, &wasm_bindgen::JsValue::from_str(key)).ok()
+                        .and_then(|v| v.as_string())
+                };
+                if get_str("type").as_deref() != Some("oauth_callback") { return; }
+                let code = get_str("code").unwrap_or_default();
+                let state = get_str("state").unwrap_or_default();
+                if code.is_empty() { return; }
+                if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
+                    let saved_state = storage.get_item("oauth_state").ok().flatten().unwrap_or_default();
+                    if !saved_state.is_empty() && saved_state != state { return; }
+                    let provider = storage.get_item("oauth_provider").ok().flatten().unwrap_or_default();
+                    let verifier = storage.get_item("oauth_verifier").ok().flatten().unwrap_or_default();
+                    if provider.is_empty() { return; }
+                    let pf = oauth_flow.clone();
+                    let providers = providers.clone();
+                    let loading = loading.clone();
+                    let error = error.clone();
+                    let connections = connections.clone();
+                    spawn_local(async move {
+                        let redirect = web_sys::window()
+                            .and_then(|w| Some(format!("{}/callback.html", w.location().origin().ok()?)))
+                            .unwrap_or_else(|| "http://localhost:3000/callback.html".to_string());
+                        match exchange_code(&provider, &code, &redirect, &verifier).await {
+                            Ok(_) => {
+                                pf.set(OAuthFlowState::Done);
+                                loading.set(true);
+                                if let Ok(data) = fetch_providers().await { providers.set(data); }
+                                if let Ok(data) = fetch_connections().await { connections.set(data); }
+                                loading.set(false);
+                            }
+                            Err(e) => error.set(e),
+                        }
+                    });
+                }
+            });
+            w.add_event_listener_with_callback("message", closure.as_ref().unchecked_ref()).ok();
+            closure.forget();
+        }
+    }
+
+    // ─── Type groups ──────────────────────────────────────────────
     let type_groups = create_memo(move |_| {
         let types = provider_types.get();
         let mut free = Vec::new();
         let mut free_tier = Vec::new();
         let mut apikey = Vec::new();
+        let mut oauth = Vec::new();
+        let mut webcookie = Vec::new();
         for t in &types {
             match t.category.as_str() {
                 "free" => free.push(t.clone()),
                 "free-tier" => free_tier.push(t.clone()),
+                "oauth" => oauth.push(t.clone()),
+                "web-cookie" => webcookie.push(t.clone()),
                 _ => apikey.push(t.clone()),
             }
         }
-        (free, free_tier, apikey)
+        (free, free_tier, apikey, oauth, webcookie)
     });
 
+    // ─── Section groups ───────────────────────────────────────────
+    let sections = create_memo(move |_| {
+        let provs = providers.get();
+        let mut secs: Vec<(&str, Vec<ProviderDetail>)> = Vec::new();
+        for cat in CATEGORY_ORDER {
+            let items: Vec<ProviderDetail> = provs.iter()
+                .filter(|p| p.category == *cat)
+                .cloned()
+                .collect();
+            if !items.is_empty() { secs.push((cat, items)); }
+        }
+        secs
+    });
+
+    // ─── OAuth helpers ────────────────────────────────────────────
+    let supports_device_code = move |p: &str| -> bool {
+        matches!(p, "github" | "kimi_coding" | "codebuddy" | "cursor" | "kilocode")
+    };
+
+    let do_oauth_login = {
+        let oauth_flow = oauth_flow.clone();
+        move |provider_name: String| {
+            oauth_flow.set(OAuthFlowState::Idle);
+            let p = provider_name.clone();
+            let pf = oauth_flow.clone();
+            spawn_local(async move {
+                match initiate_authorize(&p).await {
+                    Ok(resp) => {
+                        // Store OAuth state in sessionStorage for callback
+                        if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
+                            let _ = storage.set_item("oauth_state", &resp.state);
+                            let _ = storage.set_item("oauth_verifier", &resp.code_verifier);
+                            let _ = storage.set_item("oauth_provider", &p);
+                        }
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.open_with_url_and_target_and_features(
+                                &resp.auth_url,
+                                &format!("oauth_{}", p),
+                                "width=600,height=700,menubar=no,toolbar=no,location=yes",
+                            );
+                        }
+                        pf.set(OAuthFlowState::Authorizing { provider: p.clone() });
+                    }
+                    Err(e) => pf.set(OAuthFlowState::Error(e)),
+                }
+            });
+        }
+    };
+
+    let do_device_code = {
+        let oauth_flow = oauth_flow.clone();
+        let oauth_device_code_data = oauth_device_code_data.clone();
+        move |provider_name: String| {
+            oauth_flow.set(OAuthFlowState::Idle);
+            let p = provider_name.clone();
+            let pf = oauth_flow.clone();
+            let dc = oauth_device_code_data.clone();
+            spawn_local(async move {
+                match initiate_device_code(&p).await {
+                    Ok(data) => {
+                        dc.set(Some(data.clone()));
+                        pf.set(OAuthFlowState::WaitingDevice {
+                            provider: p.clone(),
+                            device_code: data.device_code.clone(),
+                            interval: data.interval.max(5),
+                        });
+                        if let Some(window) = web_sys::window() {
+                            let _ = window.navigator().clipboard().write_text(&data.user_code);
+                        }
+                    }
+                    Err(e) => pf.set(OAuthFlowState::Error(e)),
+                }
+            });
+        }
+    };
+
+    let do_import_token = {
+        let oauth_flow = oauth_flow.clone();
+        let providers = providers.clone();
+        let loading = loading.clone();
+        let connections = connections.clone();
+        let error = error.clone();
+        move |provider_name: String, token_val: String| {
+            if token_val.is_empty() { return; }
+            let p = provider_name.clone();
+            let pf = oauth_flow.clone();
+            let providers = providers.clone();
+            let loading = loading.clone();
+            let connections = connections.clone();
+            let error = error.clone();
+            spawn_local(async move {
+                match import_token(&p, &token_val).await {
+                    Ok(_) => {
+                        pf.set(OAuthFlowState::Done);
+                        loading.set(true);
+                        if let Ok(data) = fetch_providers().await {
+                            providers.set(data);
+                            loading.set(false);
+                        }
+                        if let Ok(data) = fetch_connections().await {
+                            connections.set(data);
+                        }
+                    }
+                    Err(e) => {
+                        pf.set(OAuthFlowState::Error(e.clone()));
+                        error.set(e);
+                    }
+                }
+            });
+        }
+    };
+
+    // ─── Form logic ───────────────────────────────────────────────
     let show_add_form = move || {
         edit_id.set(None);
         form_name.set(String::new());
@@ -91,6 +287,8 @@ pub fn Providers() -> impl IntoView {
         form_url.set(String::new());
         form_models.set(Vec::new());
         form_caps.set(Vec::new());
+        oauth_flow.set(OAuthFlowState::Idle);
+        oauth_device_code_data.set(None);
         show_form.set(true);
     };
 
@@ -102,6 +300,8 @@ pub fn Providers() -> impl IntoView {
         form_url.set(p.base_url);
         form_models.set(p.models.clone());
         form_caps.set(p.capabilities.clone());
+        oauth_flow.set(OAuthFlowState::Idle);
+        oauth_device_code_data.set(None);
         show_form.set(true);
     };
 
@@ -109,11 +309,18 @@ pub fn Providers() -> impl IntoView {
         let t = form_type.get();
         provider_types.get().into_iter().find(|pt| pt.id == t)
     });
+
     let is_free_type = create_memo(move |_| {
         selected_type_info.get().map(|t| t.category == "free").unwrap_or(false)
     });
+    let is_oauth_selected = create_memo(move |_| {
+        selected_type_info.get().map(|t| t.category == "oauth").unwrap_or(false)
+    });
+    let is_webcookie_selected = create_memo(move |_| {
+        selected_type_info.get().map(|t| t.category == "web-cookie").unwrap_or(false)
+    });
 
-    let save = move || {
+    let do_save = move || {
         saving.set(true);
         error.set(String::new());
         let body = serde_json::json!({
@@ -178,21 +385,19 @@ pub fn Providers() -> impl IntoView {
         });
     };
 
-    let handle_test_model = move |provider_id: &str, model: &str| {
-        let pid = provider_id.to_string();
-        let mdl = model.to_string();
-        let key = format!("{}:{}", pid, mdl);
+    let handle_test_model = move |provider_id: String, model: String| {
+        let key = format!("{}:{}", provider_id, model);
         if testing_model.with(|t| t.as_deref() == Some(&key)) {
             return;
         }
         testing_model.set(Some(key.clone()));
         spawn_local({
-            let pid2 = pid.clone();
-            let mdl2 = mdl.clone();
+            let pid = provider_id.clone();
+            let mdl = model.clone();
             let testing_model = testing_model.clone();
             let model_test_results = model_test_results.clone();
             async move {
-                let result = test_provider_model(&pid2, &mdl2).await;
+                let result = test_provider_model(&pid, &mdl).await;
                 match result {
                     Ok(r) => {
                         model_test_results.update(|m| { m.insert(key.clone(), r); });
@@ -200,7 +405,7 @@ pub fn Providers() -> impl IntoView {
                     Err(e) => {
                         model_test_results.update(|m| {
                             m.insert(key.clone(), TestProviderResponse {
-                                ok: false, latency_ms: 0, model: mdl2.clone(),
+                                ok: false, latency_ms: 0, model: mdl.clone(),
                                 error: Some(e),
                             });
                         });
@@ -211,19 +416,114 @@ pub fn Providers() -> impl IntoView {
         });
     };
 
-    let sections = create_memo(move |_| {
-        let provs = providers.get();
-        let mut secs: Vec<(&str, Vec<ProviderDetail>)> = Vec::new();
-        for cat in CATEGORY_ORDER {
-            let items: Vec<ProviderDetail> = provs.iter()
-                .filter(|p| p.category == *cat)
-                .cloned()
-                .collect();
-            if !items.is_empty() { secs.push((cat, items)); }
-        }
-        secs
-    });
+    // ─── OAuth form renderers ─────────────────────────────────────
+    let render_oauth_form = move |ptype: String, pname: String| -> Vec<Box<dyn Fn() -> leptos::HtmlElement<leptos::html::AnyElement>>> {
+        let mut els: Vec<Box<dyn Fn() -> leptos::HtmlElement<leptos::html::AnyElement>>> = Vec::new();
 
+        // Login button
+        let bt_ptype = ptype.clone();
+        els.push(Box::new(move || {
+            let bt = bt_ptype.clone();
+            let pn = pname.clone();
+            view! {
+                <div class="mb-4">
+                    <label class="block text-xs text-secondary mb-1.5 font-medium">"OAuth Login"</label>
+                    <button on:click=move|_| do_oauth_login(bt.clone())
+                        class="w-full px-4 py-3 text-sm font-medium rounded-lg text-white bg-[#db6b28] hover:bg-[#c05d22] active:scale-[0.97] transition-all duration-150 flex items-center justify-center gap-2"
+                    >
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+                        "Login with "{pn.clone()}
+                    </button>
+                </div>
+            }.into_any()
+        }));
+
+        // Device code
+        if supports_device_code(&ptype) {
+            let ptype = ptype.clone();
+            els.push(Box::new(move || {
+                let is_dev = oauth_flow.with(|f| matches!(f, OAuthFlowState::WaitingDevice { .. }));
+                let dev_data = oauth_device_code_data.get();
+                let dc_ptype = ptype.clone();
+                view! {
+                    <div class="mb-4">
+                        <label class="block text-xs text-secondary mb-1.5 font-medium">"Or use Device Code"</label>
+                        <button on:click=move|_| do_device_code(dc_ptype.clone())
+                            disabled=is_dev
+                            class="w-full px-4 py-2 text-sm font-medium rounded-lg border border-[#db6b28]/30 text-[#db6b28] hover:bg-[rgba(219,107,40,0.1)] disabled:opacity-50 active:scale-[0.97] transition-all duration-150 flex items-center justify-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                            "Device Code"
+                        </button>
+                        {dev_data.map(|dd| view! {
+                            <div class="mt-3 p-3 rounded-lg bg-surface-2 border border-border-subtle">
+                                <p class="text-xs text-secondary mb-1">"Open" <a href=dd.verification_uri.clone() target="_blank" class="text-accent underline">{dd.verification_uri.clone()}</a></p>
+                                <p class="text-xs text-secondary mb-1">"Enter code:"</p>
+                                <p class="text-lg font-mono font-bold text-primary tracking-wider text-center py-2 bg-surface rounded-lg">{dd.user_code.clone()}</p>
+                                <p class="text-xs text-muted mt-1">"Code expires in {dd.expires_in}s (copied to clipboard)"</p>
+                            </div>
+                        })}
+                    </div>
+                }.into_any()
+            }));
+        }
+
+        // Token/cookie import
+        if matches!(ptype.as_str(), "iflow" | "codex" | "cursor") {
+            let ptype = ptype.clone();
+            els.push(Box::new(move || {
+                let cookie_val = create_rw_signal(String::new());
+                let im_ptype = ptype.clone();
+                view! {
+                    <div class="mb-4">
+                        <label class="block text-xs text-secondary mb-1.5 font-medium">"Or Import Token / Cookie"</label>
+                        <div class="flex gap-2">
+                            <input type="password" prop:value=move || cookie_val.get()
+                                placeholder="paste token or cookie value..."
+                                on:input=move|ev| cookie_val.set(event_target_value(&ev))
+                                class="flex-1 px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"
+                            />
+                            <button on:click=move|_| do_import_token(im_ptype.clone(), cookie_val.get())
+                                class="px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover active:scale-[0.97] transition-all duration-150"
+                            >"Import"</button>
+                        </div>
+                    </div>
+                }.into_any()
+            }));
+        }
+
+        els
+    };
+
+    let render_webcookie_form = move |ptype: String, pname: String| -> Vec<Box<dyn Fn() -> leptos::HtmlElement<leptos::html::AnyElement>>> {
+        let mut els: Vec<Box<dyn Fn() -> leptos::HtmlElement<leptos::html::AnyElement>>> = Vec::new();
+        let pn = pname.clone();
+
+        els.push(Box::new(move || {
+            let cookie_val = create_rw_signal(String::new());
+            let wc_ptype = ptype.clone();
+            view! {
+                <div class="mb-4">
+                    <label class="block text-xs text-secondary mb-1.5 font-medium">"Session Cookie"</label>
+                    <p class="text-xs text-muted mb-2">"Copy the session cookie from" <span class="font-mono text-secondary">{pn.clone()}</span> "and paste below."</p>
+                    <div class="flex gap-2">
+                        <input type="password" prop:value=move || cookie_val.get()
+                            placeholder="e.g. sso=abc123... or __Secure-next-auth.session-token=..."
+                            on:input=move|ev| cookie_val.set(event_target_value(&ev))
+                            class="flex-1 px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"
+                        />
+                        <button on:click=move|_| do_import_token(wc_ptype.clone(), cookie_val.get())
+                            class="px-3 py-2 text-sm font-medium rounded-lg bg-[#db6b9a] text-white hover:bg-[#c05d82] active:scale-[0.97] transition-all duration-150"
+                        >"Import Cookie"</button>
+                    </div>
+                </div>
+            }.into_any()
+        }));
+
+        els
+    };
+
+    // ═══ VIEW ═══════════════════════════════════════════════════════
     view! {
         <div class="animate-fade-in">
             <div class="flex items-center justify-between mb-6">
@@ -231,90 +531,206 @@ pub fn Providers() -> impl IntoView {
                     <h1 class="text-2xl font-bold text-primary">"Providers"</h1>
                     <p class="text-sm text-secondary mt-1">"Manage upstream LLM providers"</p>
                 </div>
-                <button on:click=move|_|show_add_form()
+                <button on:click=move|_| show_add_form()
                     class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     "Add Provider"
                 </button>
             </div>
 
-            {move || (!error.get().is_empty()).then(|| view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger">{error.get()}</p> })}
+            // Error banner
+            {move || (!error.get().is_empty()).then(|| view! {
+                <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger">{error.get()}</p>
+            })}
             {move || loading.get().then(|| view! { <SkeletonTable rows=4/> })}
+
+            // OAuth flow status
+            {move || match oauth_flow.get() {
+                OAuthFlowState::Authorizing { ref provider } => Some(view! {
+                    <div class="mb-4 p-3 rounded-lg bg-[rgba(219,107,40,0.1)] border border-[#db6b28]/30 text-sm text-[#db6b28] flex items-center gap-2">
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        "Waiting for OAuth login for " {provider.clone()} "... complete the login in the popup window."
+                    </div>
+                }),
+                OAuthFlowState::WaitingDevice { ref provider, .. } => Some(view! {
+                    <div class="mb-4 p-3 rounded-lg bg-[rgba(219,107,40,0.1)] border border-[#db6b28]/30 text-sm text-[#db6b28] flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                        "Waiting for device code authentication for " {provider.clone()} "..."
+                    </div>
+                }),
+                OAuthFlowState::Done => Some(view! {
+                    <div class="mb-4 p-3 rounded-lg bg-success/10 border border-success/30 text-sm text-success flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        "OAuth connection established! Reloading providers..."
+                    </div>
+                }),
+                OAuthFlowState::Error(ref msg) => Some(view! {
+                    <div class="mb-4 p-3 rounded-lg bg-danger-bg border border-danger/30 text-sm text-danger flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                        {msg.clone()}
+                    </div>
+                }),
+                _ => None,
+            }}
 
             // Delete Confirm
             {move || delete_id.get().map(|id| {
                 let name = providers.with(|p| p.iter().find(|x| x.id == id).map(|x| x.name.clone()).unwrap_or_default());
                 let id3 = id.clone();
                 view! {
-                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in" on:click=move|_|delete_id.set(None)>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 w-full max-w-md mx-4 shadow-2xl animate-scale-in" on:click=move|ev| ev.stop_propagation()>
+                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in"
+                        on:click=move|_| delete_id.set(None)>
+                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 w-full max-w-md mx-4 shadow-2xl animate-scale-in"
+                            on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-start gap-3 mb-4">
                                 <div class="w-10 h-10 rounded-full bg-danger-bg flex items-center justify-center flex-shrink-0">
                                     <svg class="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
                                 </div>
                                 <div>
                                     <h3 class="text-base font-semibold text-primary">{format!("Delete \"{}\"?", name)}</h3>
-                                    <p class="text-sm text-secondary mt-1">"This provider will be removed from all routes. This action cannot be undone."</p>
+                                    <p class="text-sm text-secondary mt-1">"This provider will be removed from all routes."</p>
                                 </div>
                             </div>
                             <div class="flex gap-2 justify-end">
-                                <button on:click=move|_|delete_id.set(None) class="px-4 py-2 text-sm font-medium rounded-lg bg-transparent border border-surface text-secondary hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
-                                <button on:click=move|_|do_delete(id3.clone()) class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-danger hover:bg-red-600 active:scale-[0.97] transition-all duration-150">"Delete"</button>
+                                <button on:click=move|_| delete_id.set(None)
+                                    class="px-4 py-2 text-sm font-medium rounded-lg bg-transparent border border-surface text-secondary hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
+                                <button on:click=move|_| do_delete(id3.clone())
+                                    class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-danger hover:bg-red-600 active:scale-[0.97] transition-all duration-150">"Delete"</button>
                             </div>
                         </div>
                     </div>
                 }
             })}
 
-            // Modal Form (wait for provider types)
+            // Modal form
             {move || (show_form.get() && provider_types_loaded.get()).then(|| {
                 let is_edit = edit_id.get().is_some();
-                let (free, free_tier, apikey) = type_groups.get();
+                let (free, free_tier, apikey, oauth_types, webcookie_types) = type_groups.get();
+                let oauth = oauth_types;
+                let webcookie = webcookie_types;
                 view! {
-                    <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[10vh] z-50 animate-fade-in" on:click=move|_|show_form.set(false)>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto shadow-2xl animate-scale-in" on:click=move|ev| ev.stop_propagation()>
+                    <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[10vh] z-50 animate-fade-in"
+                        on:click=move|_| show_form.set(false)>
+                        <div class="bg-surface border border-border-subtle rounded-[14px] w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto shadow-2xl animate-scale-in"
+                            on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-center justify-between px-6 py-4 border-b border-surface">
                                 <h2 class="text-lg font-semibold text-primary">{if is_edit { "Edit Provider" } else { "Add Provider" }}</h2>
-                                <button on:click=move|_|show_form.set(false) class="text-muted hover:text-primary transition-colors">
+                                <button on:click=move|_| show_form.set(false) class="text-muted hover:text-primary transition-colors">
                                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                 </button>
                             </div>
                             <div class="p-6">
                                 <div class="mb-4">
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Name"</label>
-                                    <input type="text" prop:value=form_name.get() placeholder="e.g. my-openai" on:input=move|ev|form_name.set(event_target_value(&ev)) class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                    <input type="text" prop:value=form_name.get() placeholder="e.g. my-openai"
+                                        on:input=move|ev| form_name.set(event_target_value(&ev))
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
                                 </div>
                                 <div class="mb-4">
                                     <label class="block text-xs text-secondary mb-1.5 font-medium">"Type"</label>
-                                    <select prop:value=form_type.get() on:change=move|ev|form_type.set(event_target_value(&ev)) class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
-                                        <optgroup label="── Free (No Key) ──">
-                                            {free.into_iter().map(|t| { let id = t.id.clone(); view! { <option value=id>{t.display_name}</option> } }).collect::<Vec<_>>()}
+                                    <select prop:value=form_type.get() on:change=move|ev| form_type.set(event_target_value(&ev))
+                                        class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors">
+                                        <optgroup label="Free (No Key)">
+                                            {free.into_iter().map(|t| view! { <option value=t.id.clone()>{t.display_name}</option> }).collect::<Vec<_>>()}
                                         </optgroup>
-                                        <optgroup label="── Free Tier (Signup) ──">
-                                            {free_tier.into_iter().map(|t| { let id = t.id.clone(); view! { <option value=id>{t.display_name}</option> } }).collect::<Vec<_>>()}
+                                        <optgroup label="Free Tier (Signup)">
+                                            {free_tier.into_iter().map(|t| view! { <option value=t.id.clone()>{t.display_name}</option> }).collect::<Vec<_>>()}
                                         </optgroup>
-                                        <optgroup label="── API Key (Paid) ──">
-                                            {apikey.into_iter().map(|t| { let id = t.id.clone(); view! { <option value=id>{t.display_name}</option> } }).collect::<Vec<_>>()}
+                                        <optgroup label="API Key (Paid)">
+                                            {apikey.into_iter().map(|t| view! { <option value=t.id.clone()>{t.display_name}</option> }).collect::<Vec<_>>()}
+                                        </optgroup>
+                                        <optgroup label="OAuth (Login)">
+                                            {oauth.into_iter().map(|t| view! { <option value=t.id.clone()>{t.display_name}</option> }).collect::<Vec<_>>()}
+                                        </optgroup>
+                                        <optgroup label="Web Cookie">
+                                            {webcookie.into_iter().map(|t| view! { <option value=t.id.clone()>{t.display_name}</option> }).collect::<Vec<_>>()}
                                         </optgroup>
                                     </select>
                                 </div>
-                                {move || { let is_free = is_free_type.get(); if is_free {
-                                    view! { <div class="mb-4 opacity-50 pointer-events-none"><label class="block text-xs text-secondary mb-1.5 font-medium">"API Key"</label><input type="text" disabled=true value="(no key needed)" class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/></div> }.into_view()
-                                } else {
-                                    view! { <div class="mb-4"><label class="block text-xs text-secondary mb-1.5 font-medium">"API Key"</label><input type="password" prop:value=form_key.get() placeholder=if is_edit { "(unchanged on edit)" } else { "sk-..." } on:input=move|ev|form_key.set(event_target_value(&ev)) class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div> }.into_view()
-                                }}}
-                                {move || { let is_free = is_free_type.get(); let placeholder = if is_free { "" } else { "https://api.example.com/v1" }; if is_free {
-                                    view! { <div class="mb-4 opacity-50 pointer-events-none"><label class="block text-xs text-secondary mb-1.5 font-medium">"Base URL"</label><input type="text" disabled=true value="(hardcoded)" class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/></div> }.into_view()
-                                } else {
-                                    view! { <div class="mb-4"><label class="block text-xs text-secondary mb-1.5 font-medium">"Base URL"</label><input type="text" prop:value=form_url.get() placeholder=placeholder on:input=move|ev|form_url.set(event_target_value(&ev)) class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div> }.into_view()
-                                }}}
-                                <TagInput label="Models (type + Enter or comma to add)".to_string() placeholder="e.g. gpt-4o".to_string() tags=form_models/>
-                                <TagInput label="Capabilities".to_string() placeholder="e.g. vision".to_string() tags=form_caps/>
+
+                                // Auth fields based on type
+                                {move || {
+                                    if is_free_type.get() {
+                                        view! {
+                                            <div class="mb-4 opacity-50 pointer-events-none">
+                                                <label class="block text-xs text-secondary mb-1.5 font-medium">"API Key"</label>
+                                                <input type="text" disabled=true value="(no key needed)" class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/>
+                                            </div>
+                                        }.into_view()
+                                    } else if is_oauth_selected.get() {
+                                        let sel = selected_type_info.get();
+                                        let pn = sel.as_ref().map(|i| i.display_name.clone()).unwrap_or_default();
+                                        let pt = form_type.get();
+                                        view! {
+                                            {render_oauth_form(pt.clone(), pn).into_iter().map(|f| f()).collect::<Vec<_>>()}
+                                        }.into_view()
+                                    } else if is_webcookie_selected.get() {
+                                        let sel = selected_type_info.get();
+                                        let pn = sel.as_ref().map(|i| i.display_name.clone()).unwrap_or_default();
+                                        let pt = form_type.get();
+                                        view! {
+                                            {render_webcookie_form(pt.clone(), pn).into_iter().map(|f| f()).collect::<Vec<_>>()}
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <div class="mb-4">
+                                                <label class="block text-xs text-secondary mb-1.5 font-medium">"API Key"</label>
+                                                <input type="password" prop:value=form_key.get()
+                                                    placeholder=if is_edit { "(unchanged on edit)" } else { "sk-..." }
+                                                    on:input=move|ev| form_key.set(event_target_value(&ev))
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                            </div>
+                                        }.into_view()
+                                    }
+                                }}
+
+                                // Base URL
+                                {move || {
+                                    let is_free = is_free_type.get();
+                                    let is_oauth = is_oauth_selected.get();
+                                    let is_wc = is_webcookie_selected.get();
+                                    let placeholder = if is_free || is_oauth || is_wc { "" } else { "https://api.example.com/v1" };
+                                    if is_free || is_oauth || is_wc {
+                                        view! {
+                                            <div class="mb-4 opacity-50 pointer-events-none">
+                                                <label class="block text-xs text-secondary mb-1.5 font-medium">"Base URL"</label>
+                                                <input type="text" disabled=true
+                                                    value={if is_free { "(hardcoded)" } else { "(auto)" }}
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-muted"/>
+                                            </div>
+                                        }.into_view()
+                                    } else {
+                                        view! {
+                                            <div class="mb-4">
+                                                <label class="block text-xs text-secondary mb-1.5 font-medium">"Base URL"</label>
+                                                <input type="text" prop:value=form_url.get() placeholder=placeholder
+                                                    on:input=move|ev| form_url.set(event_target_value(&ev))
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-surface rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/>
+                                            </div>
+                                        }.into_view()
+                                    }
+                                }}
+
+                                <TagInput label="Models (type + Enter or comma to add)".to_string()
+                                    placeholder="e.g. gpt-4o".to_string() tags=form_models/>
+                                <TagInput label="Capabilities".to_string()
+                                    placeholder="e.g. vision".to_string() tags=form_caps/>
+
                                 <div class="flex gap-3 justify-end mt-6 pt-4 border-t border-surface">
-                                    <button on:click=move|_|show_form.set(false) class="px-4 py-2 text-sm font-medium rounded-lg bg-transparent border border-surface text-secondary hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
-                                    <button on:click=move|_|save() disabled=saving.get() class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover disabled:opacity-50 active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
-                                        {saving.get().then(|| view! { "Saving..." }).unwrap_or(view! { "Save" })}
-                                    </button>
+                                    <button on:click=move|_| show_form.set(false)
+                                        class="px-4 py-2 text-sm font-medium rounded-lg bg-transparent border border-surface text-secondary hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
+                                    {move || {
+                                        if !is_oauth_selected.get() && !is_webcookie_selected.get() {
+                                            view! {
+                                                <button on:click=move|_| do_save() disabled=saving.get()
+                                                    class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover disabled:opacity-50 active:scale-[0.97] transition-all duration-150 flex items-center gap-2">
+                                                    {if saving.get() { "Saving..." } else { "Save" }}
+                                                </button>
+                                            }.into_view()
+                                        } else {
+                                            view! { <span></span> }.into_view()
+                                        }
+                                    }}
                                 </div>
                             </div>
                         </div>
@@ -322,17 +738,20 @@ pub fn Providers() -> impl IntoView {
                 }
             })}
 
-            // ═══ CATEGORY SECTIONS ═══
+            // Provider grid sections
             {move || (!loading.get() && !show_form.get()).then(|| {
                 let secs = sections.get();
-                let is_expanded = expanded_id.get();
-                let testing = testing_model.get();
+                let conns = connections.get();
+                let is_expanded = expanded_id;
+                let deleting = delete_id;
+                let test_res = model_test_results;
+                let testing = testing_model;
 
                 if secs.is_empty() {
                     view! {
                         <div class="flex flex-col items-center justify-center py-16 text-center">
                             <svg class="w-12 h-12 text-muted mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                            <p class="text-secondary text-sm">"No providers yet — click \"Add Provider\" to get started."</p>
+                            <p class="text-secondary text-sm">"No providers yet"</p>
                         </div>
                     }.into_view()
                 } else {
@@ -340,10 +759,8 @@ pub fn Providers() -> impl IntoView {
                         <div class="flex flex-col gap-8">
                             {secs.into_iter().map(|(cat, items)| {
                                 let accent = category_accent(cat);
-                                let (_, cat_label) = category_style(cat);
-                                let count = items.len();
                                 let section_title = section_label(cat);
-
+                                let count = items.len();
                                 view! {
                                     <section>
                                         <div class="flex items-center gap-3 mb-4">
@@ -353,94 +770,32 @@ pub fn Providers() -> impl IntoView {
                                         </div>
                                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                             {items.into_iter().map(|p| {
-                                                let pid   = p.id.clone();
-                                                let pid2  = pid.clone();
-                                                let pid3  = pid.clone();
-                                                let p_edit = p.clone();
-                                                let is_this = is_expanded.as_deref() == Some(&pid);
-                                                let models  = p.models.clone();
-                                                let results = model_test_results.clone();
-                                                let cat2    = p.category.clone();
-                                                let ptype   = p.provider_type.clone();
-                                                let pname   = p.name.clone();
-                                                let _sec_lbl = cat_label;
-                                                let sec_ttl = section_title.clone();
+                                                let pid = p.id.clone();
+                                                let conns_clone = conns.clone();
+                                                let is_expanded = is_expanded;
+                                                let deleting = deleting;
+                                                let test_res = test_res;
+                                                let testing = testing;
+                                                let on_edit = show_edit_form;
+                                                let on_test = handle_test_model.clone();
+                                                let on_ol = do_oauth_login.clone();
+                                                let on_dc = do_device_code.clone();
+                                                let on_it = do_import_token.clone();
 
                                                 view! {
-                                                    <div class="bg-surface border border-border-subtle rounded-[14px] p-4 transition-all duration-200 hover:border-surface hover:-translate-y-0.5 hover:shadow-lg group cursor-pointer"
-                                                        on:click=move|_| {
-                                                            let eid = expanded_id.get();
-                                                            if eid.as_deref() == Some(&pid) { expanded_id.set(None); }
-                                                            else { expanded_id.set(Some(pid.clone())); }
-                                                        }>
-
-                                                        // Header: icon + name
-                                                        <div class="flex items-center gap-3 mb-3">
-                                                            <ProviderIcon provider_type=ptype.clone() name=pname.clone() size=40/>
-                                                            <div class="min-w-0 flex-1">
-                                                                <h3 class="font-semibold text-sm text-primary truncate">{p.name.clone()}</h3>
-                                                                <span class="text-xs text-muted truncate block">{p.provider_type.clone()}</span>
-                                                            </div>
-                                                            <div class="flex items-center gap-2 shrink-0">
-                                                                {if p.enabled { view! { <span class="flex items-center gap-1 text-xs text-success"><span class="w-1.5 h-1.5 rounded-full bg-success"></span>"Active"</span> }
-                                                                } else { view! { <span class="flex items-center gap-1 text-xs text-muted"><span class="w-1.5 h-1.5 rounded-full bg-muted"></span>"Disabled"</span> } }}
-                                                                <svg class="w-4 h-4 text-muted transition-transform duration-200" class:rotate-180=is_this fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                                                            </div>
-                                                        </div>
-
-                                                        // Category badge
-                                                        <div class="mb-2">{{ let (cls, _) = category_style(&cat2); view! { <span class={cls}>{sec_ttl.clone()}</span> }}}</div>
-
-                                                        // Collapsed summary
-                                                        {if !is_this {
-                                                            view! { <div class="text-xs text-secondary">{format!("{} models", models.len())}</div> }.into_view()
-                                                        } else {
-                                                            view! {
-                                                                <div class="space-y-1.5 text-xs mt-2 pt-3 border-t border-border-subtle">
-                                                                    <div class="flex items-center justify-between"><span class="text-secondary">Base URL</span><span class="text-primary truncate max-w-[180px] text-right font-mono">{p.base_url.clone()}</span></div>
-                                                                    {if !models.is_empty() {
-                                                                                                                                            let ptype2 = ptype.clone();
-                                                                                                                                            let pname2 = pname.clone();
-                                                                                                                                            view! {
-                                                                                                                                                <div class="pt-2">
-                                                                                                                                                    <span class="text-secondary block mb-1.5">Models</span>
-                                                                                                                                                    <div class="flex flex-col gap-1">
-                                                                                                                                                        {models.into_iter().map(|m| {
-                                                                                                                                                            let mdl = m.clone();
-                                                                                                                                                            let pid_test = pid2.clone();
-                                                                                                                                                            let tk = format!("{}:{}", pid2, mdl);
-                                                                                                                                                            let res = results.with(|r| r.get(&tk).cloned());
-                                                                                                                                                            let busy = testing.as_deref() == Some(&tk);
-                                                                                                                                                            view! {
-                                                                                                                                                                <div class="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-surface-2/50 hover:bg-surface-2 transition-colors">
-                                                                                                                                                                    <span class="text-xs text-primary font-mono flex-1">{m.clone()}</span>
-                                                                                                                                                                    <button on:click=move|ev| { ev.stop_propagation(); handle_test_model(&pid_test, &mdl); }
-                                                                                                                                                                        class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-secondary hover:text-accent hover:bg-accent-bg active:scale-[0.97] transition-all duration-150 border border-transparent hover:border-accent/30"
-                                                                                                                                                                        title="Test model">
-                                                                                                                                                                        <ProviderIcon provider_type=ptype2.clone() name=pname2.clone() size=16/>
-                                                                                                                                                                        {if busy { "Testing…" } else { "Test" }}
-                                                                                                                                                                    </button>
-                                                                                                                                                                    {res.map(|r| view! {
-                                                                                                                                                                        <span class="text-xs font-mono"
-                                                                                                                                                                            style=if r.ok { "color:#22C55e" } else { "color:#ef4444" }>
-                                                                                                                                                                            {if r.ok { format!("✓ {}ms", r.latency_ms) } else { "✗".to_string() }}
-                                                                                                                                                                        </span>
-                                                                                                                                                                    })}
-                                                                                                                                                                </div>
-                                                                                                                                                            }
-                                                                                                                                                        }).collect::<Vec<_>>()}
-                                                                                                                                                    </div>
-                                                                                                                                                </div>
-                                                                                                                                            }.into_view()
-                                                                                                                                        } else { view! { <div class="pt-2 text-xs text-muted">"No models configured"</div> }.into_view() }}
-                                                                    <div class="flex gap-2 justify-end pt-3 border-t border-border-subtle">
-                                                                        <button on:click=move|ev| { ev.stop_propagation(); show_edit_form(p_edit.clone()); } class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-secondary border border-surface hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150">"Edit"</button>
-                                                                        <button on:click=move|ev| { ev.stop_propagation(); delete_id.set(Some(pid3.clone())); } class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg active:scale-[0.97] transition-all duration-150">"Delete"</button>
-                                                                    </div>
-                                                                </div>
-                                                            }.into_view()
-                                                        }}
-                                                    </div>
+                                                    <ProviderCard
+                                                        provider=p
+                                                        expanded=is_expanded
+                                                        deleting=deleting
+                                                        model_test_results=test_res
+                                                        testing_model=testing
+                                                        connections=conns_clone
+                                                        on_edit=Box::new(move |p: ProviderDetail| show_edit_form(p))
+                                                        on_test=Box::new(handle_test_model.clone())
+                                                        on_oauth_login=Box::new(do_oauth_login.clone())
+                                                        on_device_code=Box::new(do_device_code.clone())
+                                                        on_import_token=Box::new(do_import_token.clone())
+                                                    />
                                                 }
                                             }).collect::<Vec<_>>()}
                                         </div>

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>OAuth Callback - 9router</title></head>
+<body>
+<script>
+(function() {
+  var params = new URLSearchParams(location.search);
+  var code = params.get('code');
+  var state = params.get('state');
+  if (code && window.opener) {
+    window.opener.postMessage({ type: 'oauth_callback', code: code, state: state }, location.origin);
+    document.body.innerHTML = '<p style="font:14px monospace;padding:2rem;text-align:center;color:#666">Login successful — closing...</p>';
+    setTimeout(function() { window.close(); }, 1500);
+  } else {
+    document.body.innerHTML = '<p style="font:14px monospace;padding:2rem;text-align:center;color:#666">Waiting for OAuth callback...</p>';
+  }
+})();
+</script>
+</body>
+</html>

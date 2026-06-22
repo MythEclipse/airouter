@@ -274,5 +274,73 @@ pub async fn fetch_settings() -> Result<SettingsData, String> {
 }
 
 pub async fn update_settings(data: &str) -> Result<SettingsData, String> {
-    api_request::<SettingsData>("PUT", "/api/dashboard/settings", Some(data)).await
+    api_request::<SettingsData>("PUT", &format!("/api/dashboard/settings",), Some(data)).await
+}
+
+// ─── OAuth & Connections ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OAuthAuthorizeResponse {
+    pub auth_url: String,
+    pub state: String,
+    pub code_verifier: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OAuthConnectionItem {
+    pub id: String,
+    pub provider: String,
+    pub auth_type: String,
+    pub access_token_preview: String,
+    pub scope: Option<String>,
+    pub created_at: String,
+    pub is_valid: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OAuthPollResponse {
+    pub status: String,
+    pub connection: Option<OAuthConnectionItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeviceCodeData {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+pub async fn initiate_authorize(provider: &str) -> Result<OAuthAuthorizeResponse, String> {
+    api_request::<OAuthAuthorizeResponse>("GET", &format!("/api/oauth/{}/authorize", provider), None).await
+}
+
+pub async fn exchange_code(provider: &str, code: &str, redirect_uri: &str, code_verifier: &str) -> Result<OAuthConnectionItem, String> {
+    let body = serde_json::json!({"code": code, "redirect_uri": redirect_uri, "code_verifier": code_verifier}).to_string();
+    api_request::<OAuthConnectionItem>("POST", &format!("/api/oauth/{}/exchange", provider), Some(&body)).await
+}
+
+pub async fn initiate_device_code(provider: &str) -> Result<DeviceCodeData, String> {
+    api_request::<DeviceCodeData>("GET", &format!("/api/oauth/{}/device-code", provider), None).await
+}
+
+pub async fn poll_device(provider: &str, device_code: &str) -> Result<OAuthPollResponse, String> {
+    let body = serde_json::json!({"device_code": device_code}).to_string();
+    api_request::<OAuthPollResponse>("POST", &format!("/api/oauth/{}/poll", provider), Some(&body)).await
+}
+
+pub async fn import_token(provider: &str, token: &str) -> Result<OAuthConnectionItem, String> {
+    let body = serde_json::json!({"token": token, "provider": provider}).to_string();
+    api_request::<OAuthConnectionItem>("POST", "/api/oauth/import-token", Some(&body)).await
+}
+
+pub async fn fetch_connections() -> Result<Vec<OAuthConnectionItem>, String> {
+    let body = serde_json::json!({}).to_string();
+    api_request::<Vec<OAuthConnectionItem>>("POST", "/api/oauth/connections", Some(&body)).await
+}
+
+pub async fn delete_oauth_connection(id: &str) -> Result<(), String> {
+    let _: serde_json::Value = api_request("DELETE", &format!("/api/oauth/connections/{}", id), None).await?;
+    Ok(())
 }

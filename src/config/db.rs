@@ -69,6 +69,16 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
             model.updated_at = sea_orm::ActiveValue::Set(Utc::now());
             model.update(db).await?;
         } else {
+            // Determine if this provider should be disabled by default
+            // OAuth/WebCookie providers need user action (login/import) before use
+            let is_oauth_type = matches!(p.provider_type.as_str(),
+                "antigravity" | "claude" | "cline" | "codebuddy" | "codex" | "cursor"
+                | "github" | "gitlab" | "iflow" | "kilocode" | "kimi_coding" | "qwen"
+            );
+            let is_webcookie_type = matches!(p.provider_type.as_str(),
+                "grok_web" | "perplexity_web"
+            );
+
             // Insert new
             provider::Entity::insert(provider::ActiveModel {
                 id: sea_orm::ActiveValue::Set(uuid::Uuid::new_v4()),
@@ -79,7 +89,7 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
                 models: sea_orm::ActiveValue::Set(p.models.clone()),
                 extra_headers: sea_orm::ActiveValue::Set(extra),
                 capabilities: sea_orm::ActiveValue::Set(p.capabilities.clone()),
-                enabled: sea_orm::ActiveValue::Set(true),
+                enabled: sea_orm::ActiveValue::Set(!is_oauth_type && !is_webcookie_type),
                 created_at: sea_orm::ActiveValue::Set(Utc::now()),
                 updated_at: sea_orm::ActiveValue::Set(Utc::now()),
             })

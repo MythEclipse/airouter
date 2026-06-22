@@ -6,3 +6,4 @@ pub mod modal;
 pub mod tag_input;
 pub mod skeleton;
 pub mod provider_icon;
+pub mod provider_card;
