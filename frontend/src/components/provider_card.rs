@@ -153,7 +153,7 @@ fn ExpandedContent(
             </div>
 
             // ── OAuth Login UI ──
-            {if is_oauth && !has_conn && !enabled {
+            {if is_oauth && !has_conn {
                 let ol = on_oauth_login.clone();
                 let pt = ptype.clone();
                 let pt2 = pt.clone();
@@ -180,7 +180,7 @@ fn ExpandedContent(
             } else { view! { <span></span> }.into_view() }}
 
             // ── WebCookie Import UI ──
-            {if is_wc && !has_conn && !enabled {
+            {if is_wc && !has_conn {
                 let it = on_import_token.clone();
                 let pt = ptype.clone();
                 let input_id = format!("wc_{}", pid);

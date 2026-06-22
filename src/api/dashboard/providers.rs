@@ -143,7 +143,25 @@ async fn test_provider(
         .ok_or_else(|| err_404("Provider not found"))?;
 
     let base_url = row.base_url.trim_end_matches('/').to_string();
-    let api_key = row.api_key;
+    let api_key = if row.api_key.is_empty() {
+        // OAuth/WebCookie providers store token in provider_connections
+        use sea_orm::ColumnTrait;
+        use crate::entities::provider_connection;
+        use sea_orm::QueryFilter;
+        use sea_orm::query::Condition;
+        provider_connection::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(provider_connection::Column::ProviderName.eq(&row.provider_type))
+                    .add(provider_connection::Column::IsActive.eq(true))
+            )
+            .one(&state.db).await
+            .ok().flatten()
+            .and_then(|c| c.data.get("access_token").and_then(|v| v.as_str()).map(String::from))
+            .unwrap_or_default()
+    } else {
+        row.api_key
+    };
     let model = body.model;
 
     // Free providers have hardcoded URLs — override empty base_url
@@ -255,6 +273,16 @@ async fn test_provider(
         }
         "opencode_free" => {
             req_builder = req_builder.header("x-opencode-client", "desktop");
+        }
+        "grok_web" => {
+            if !api_key.is_empty() {
+                req_builder = req_builder.header("Cookie", &api_key);
+            }
+        }
+        "perplexity_web" => {
+            if !api_key.is_empty() {
+                req_builder = req_builder.header("Cookie", &api_key);
+            }
         }
         _ => {
             if !api_key.is_empty() {

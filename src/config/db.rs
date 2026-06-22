@@ -58,6 +58,16 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
             .filter(provider::Column::Name.eq(&p.name))
             .one(db).await?;
 
+        // Determine if this provider should be disabled by default
+        // OAuth/WebCookie providers need user action (login/import) before use
+        let is_oauth_type = matches!(p.provider_type.as_str(),
+            "antigravity" | "claude" | "cline" | "codebuddy" | "codex" | "cursor"
+            | "github" | "gitlab" | "iflow" | "kilocode" | "kimi_coding" | "qwen"
+        );
+        let is_webcookie_type = matches!(p.provider_type.as_str(),
+            "grok_web" | "perplexity_web"
+        );
+
         if let Some(row) = existing {
             // Update — keep api_key (user-set), update models/base_url/type from seed
             let mut model: provider::ActiveModel = row.into();
@@ -66,18 +76,11 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
             model.models = sea_orm::ActiveValue::Set(p.models.clone());
             model.extra_headers = sea_orm::ActiveValue::Set(extra);
             model.capabilities = sea_orm::ActiveValue::Set(p.capabilities.clone());
+            // Also fix enabled flag for OAuth/WebCookie (user might have old seed)
+            model.enabled = sea_orm::ActiveValue::Set(!is_oauth_type && !is_webcookie_type);
             model.updated_at = sea_orm::ActiveValue::Set(Utc::now());
             model.update(db).await?;
         } else {
-            // Determine if this provider should be disabled by default
-            // OAuth/WebCookie providers need user action (login/import) before use
-            let is_oauth_type = matches!(p.provider_type.as_str(),
-                "antigravity" | "claude" | "cline" | "codebuddy" | "codex" | "cursor"
-                | "github" | "gitlab" | "iflow" | "kilocode" | "kimi_coding" | "qwen"
-            );
-            let is_webcookie_type = matches!(p.provider_type.as_str(),
-                "grok_web" | "perplexity_web"
-            );
 
             // Insert new
             provider::Entity::insert(provider::ActiveModel {
@@ -214,13 +217,40 @@ pub async fn load_config_from_db(db: &DatabaseConnection) -> Result<Settings, se
         .filter(provider::Column::Enabled.eq(true))
         .all(db).await?;
 
+    // Build a lookup of OAuth/WebCookie connection tokens so enabled providers
+    // that store auth in provider_connections (not providers.api_key) get their
+    // token injected at config load time.
+    use crate::entities::provider_connection;
+    use sea_orm::ColumnTrait;
+    let all_connections = provider_connection::Entity::find()
+        .filter(provider_connection::Column::IsActive.eq(true))
+        .all(db).await.unwrap_or_default();
+    // provider_name -> access_token from the latest active connection
+    let mut connection_tokens: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for c in &all_connections {
+        let token = c.data.get("access_token")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !token.is_empty() {
+            // Keep latest (highest priority) per provider
+            connection_tokens.entry(c.provider_name.clone())
+                .or_insert_with(|| token.to_string());
+        }
+    }
+
     let providers: Vec<ProviderConfig> = db_providers.iter().map(|p| {
         let extra: std::collections::HashMap<String, String> =
             serde_json::from_value(p.extra_headers.clone()).unwrap_or_default();
+        // For OAuth/WebCookie types, inject token from provider_connections if api_key is empty
+        let api_key = if p.api_key.is_empty() {
+            connection_tokens.get(&p.provider_type).cloned().unwrap_or_default()
+        } else {
+            p.api_key.clone()
+        };
         ProviderConfig {
             name: p.name.clone(),
             provider_type: p.provider_type.clone(),
-            api_key: p.api_key.clone(),
+            api_key,
             base_url: p.base_url.clone(),
             models: p.models.clone(),
             extra_headers: extra,

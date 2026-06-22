@@ -1,14 +1,15 @@
-FROM rust:1.84-slim-bookworm AS builder
+FROM rust:1.88-slim-bookworm AS builder
 
 WORKDIR /app
 
 # Install trunk for frontend build
-RUN cargo install trunk && rustup target add wasm32-unknown-unknown
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/* && cargo install trunk --locked && rustup target add wasm32-unknown-unknown
 
 # Backend
 COPY Cargo.toml Cargo.lock* ./
 COPY src/ ./src/
-RUN cargo build --release 2>&1 | tail -1
+COPY migrations/ ./migrations/
+RUN cargo build --release
 
 # Frontend
 COPY frontend/ ./frontend/

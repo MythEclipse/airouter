@@ -605,9 +605,7 @@ pub fn Providers() -> impl IntoView {
             // Modal form
             {move || (show_form.get() && provider_types_loaded.get()).then(|| {
                 let is_edit = edit_id.get().is_some();
-                let (free, free_tier, apikey, oauth_types, webcookie_types) = type_groups.get();
-                let oauth = oauth_types;
-                let webcookie = webcookie_types;
+                let (free, free_tier, apikey, oauth, webcookie) = type_groups.get();
                 view! {
                     <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[10vh] z-50 animate-fade-in"
                         on:click=move|_| show_form.set(false)>

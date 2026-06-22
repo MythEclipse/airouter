@@ -10,6 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::server::app::AppState;
+use sea_orm::{EntityTrait, Set, ColumnTrait, QueryFilter, ActiveModelTrait};
 
 // ─── Re-export flow types ────────────────────────────────────────
 
@@ -186,6 +187,12 @@ async fn exchange_handler(
     .await
     .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
+    // Auto-enable the provider after successful OAuth login
+    enable_provider_by_name(&state.db, &provider).await;
+    // Save token to provider.api_key so executor registry picks it up
+    set_provider_api_key(&state.db, &provider, &token_resp.access_token).await;
+    state.reload_config().await.ok();
+
     Ok(Json(to_connection_response(&conn)))
 }
 
@@ -231,6 +238,12 @@ async fn poll_handler(
             )
             .await
             .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+            // Auto-enable the provider after successful device code
+            enable_provider_by_name(&state.db, &provider).await;
+            // Save token to provider.api_key so executor registry picks it up
+            set_provider_api_key(&state.db, &provider, &token_resp.access_token).await;
+            state.reload_config().await.ok();
 
             Ok(Json(PollResponse {
                 status: "success".into(),
@@ -282,6 +295,12 @@ async fn import_token_handler(
     )
     .await
     .map_err(|e| err_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    // Auto-enable the provider after token import (WebCookie/OAuth)
+    enable_provider_by_name(&state.db, &body.provider).await;
+    // Save token/cookie to provider.api_key so executor registry picks it up
+    set_provider_api_key(&state.db, &body.provider, &body.token).await;
+    state.reload_config().await.ok();
 
     Ok(Json(to_connection_response(&conn)))
 }
@@ -335,4 +354,51 @@ async fn test_connection_handler(
         "auth_type": conn.auth_type,
         "message": if is_valid { "Token present" } else { "Token is empty" },
     })))
+}
+
+/// Find a provider by name and set it enabled.
+/// Used after successful OAuth/WebCookie connection.
+async fn enable_provider_by_name(
+    db: &sea_orm::DatabaseConnection,
+    provider_type: &str,
+) {
+    use crate::entities::provider;
+    let existing = provider::Entity::find()
+        .filter(provider::Column::Name.eq(provider_type))
+        .one(db)
+        .await
+        .ok()
+        .flatten();
+    if let Some(row) = existing {
+        if !row.enabled {
+            let mut model: provider::ActiveModel = row.into();
+            model.enabled = Set(true);
+            model.updated_at = Set(chrono::Utc::now());
+            let _ = model.update(db).await;
+        }
+    }
+}
+
+/// Save a token/cookie value into the provider's api_key field so the
+/// executor registry picks it up at runtime.
+async fn set_provider_api_key(
+    db: &sea_orm::DatabaseConnection,
+    provider_type: &str,
+    api_key: &str,
+) {
+    use crate::entities::provider;
+    use sea_orm::QueryFilter;
+    if api_key.is_empty() {
+        return;
+    }
+    if let Ok(Some(row)) = provider::Entity::find()
+        .filter(provider::Column::Name.eq(provider_type))
+        .one(db)
+        .await
+    {
+        let mut model: provider::ActiveModel = row.into();
+        model.api_key = Set(api_key.to_string());
+        model.updated_at = Set(chrono::Utc::now());
+        let _ = model.update(db).await;
+    }
 }
