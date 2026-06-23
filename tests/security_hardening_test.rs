@@ -88,7 +88,7 @@ fn is_change_password_allowed(claims: &Claims) -> bool {
 /// Verify that a JWT created with one store instance validates after the
 /// store is dropped and recreated (simulating a server restart).
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn jwt_validates_across_restart() {
     // Arrange
     let env = common::TestEnv::new().await;
@@ -118,7 +118,7 @@ async fn jwt_validates_across_restart() {
 /// Verify that a token signed with the previous secret is accepted during
 /// the grace period after rotation.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn jwt_rotation_grace_period_allows_old_tokens() {
     // Arrange
     let env = common::TestEnv::new().await;
@@ -147,7 +147,7 @@ async fn jwt_rotation_grace_period_allows_old_tokens() {
 /// Verify that a token signed with the previous secret is rejected after
 /// the grace period expires.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn jwt_rotation_expired_grace_rejects_old_tokens() {
     // Arrange
     let env = common::TestEnv::new().await;
@@ -182,7 +182,7 @@ async fn jwt_rotation_expired_grace_rejects_old_tokens() {
 /// After store1 adds a hash, store2's invalidation listener clears the
 /// local cache; the next `contains()` call hits Redis and finds the hash.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn api_key_add_propagates_to_second_instance() {
     // Arrange: two stores pointing at the same Redis
     let env = common::TestEnv::new().await;
@@ -208,7 +208,7 @@ async fn api_key_add_propagates_to_second_instance() {
 /// Verify that removing an API key hash from one KeyStore instance
 /// propagates to a second instance via pub/sub invalidation.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn api_key_delete_propagates_to_second_instance() {
     // Arrange: two stores pointing at the same Redis
     let env = common::TestEnv::new().await;
@@ -249,7 +249,7 @@ async fn api_key_delete_propagates_to_second_instance() {
 /// set) is rejected by the dashboard middleware check, while a `Login`
 /// token (issued after changing password) passes.
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn forced_password_change_blocks_dashboard_access() {
     // Arrange
     let env = common::TestEnv::new().await;
@@ -322,7 +322,7 @@ async fn forced_password_change_blocks_dashboard_access() {
 /// Verify that a regular `Login` token is rejected by the change-password
 /// route (only `ChangePwd` tokens are allowed).
 #[tokio::test]
-#[ignore]
+// #[ignore]
 async fn change_password_route_rejects_login_token() {
     // Arrange
     let env = common::TestEnv::new().await;
