@@ -7,6 +7,7 @@ use axum::{
 use std::sync::Arc;
 use crate::auth::{extract_bearer_token, sha2_hex};
 use crate::auth::jwt;
+use crate::auth::jwt_secret_store::JwtSecrets;
 use crate::server::app::AppState;
 
 pub async fn auth_middleware(
@@ -35,8 +36,13 @@ pub async fn auth_middleware(
     let is_dashboard = path.starts_with("/api/");
 
     // Try JWT validation first
-    let jwt_secret = state.jwt_secret.load();
-    match jwt::validate_token(&token, &jwt_secret) {
+    let jwt_secret_str = state.jwt_secret.load();
+    let secrets = JwtSecrets {
+        current_secret: jwt_secret_str.to_string(),
+        previous_secret: None,
+        previous_expires_at: None,
+    };
+    match jwt::validate_token(&token, &secrets) {
         Ok(claims) => {
             // JWT valid — check scope
             let required_sub = if is_dashboard { "dashboard" } else { "ai" };
