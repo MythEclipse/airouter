@@ -91,10 +91,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let rate_limiter = rate_limit::RateLimitState::from_config(&settings.load().rate_limit);
     let request_tracker = tracker::RequestTracker::new();
 
-    // Initialize Prometheus metrics exporter
+    // Initialize Prometheus metrics exporter with custom histogram buckets
+    let histogram_buckets = &[
+        5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0,
+    ];
     let prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+        .set_buckets(histogram_buckets)
+        .expect("invalid histogram buckets")
         .install_recorder()
         .ok();
+    server::app::describe_metrics();
 
     let balancer = Arc::new(router::balancer::LoadBalancer::new(redis_conn.clone(), 30));
     let engine = Arc::new(router::core::RouteEngine::new(

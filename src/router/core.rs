@@ -13,6 +13,7 @@ use crate::provider::{ErrorClass, ProviderRegistry};
 use crate::router::balancer::LoadBalancer;
 use crate::tracker::RequestTracker;
 use crate::types::openai::*;
+use metrics::{counter, histogram};
 
 // ─── Dispatch Error ──────────────────────────────────────────────
 
@@ -243,6 +244,10 @@ impl RouteEngine {
                     Ok(provider_stream) => {
                         let elapsed = start.elapsed().as_millis();
                         tracker.record_request(&self.redis, pname, model, elapsed as u64, true).await;
+                        counter!("airouter_provider_requests_total",
+                            "provider" => pname.clone(), "model" => model.to_string(), "status" => "success").increment(1);
+                        histogram!("airouter_provider_latency_ms",
+                            "provider" => pname.clone(), "model" => model.to_string()).record(elapsed as f64);
                         self.balancer.clear_cooldown(pname).await;
 
                         let chunk_stream = provider_stream.map(|chunk_result| {
@@ -267,6 +272,12 @@ impl RouteEngine {
                     Err(e) => {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
+                        counter!("airouter_provider_requests_total",
+                            "provider" => pname.clone(), "model" => model.to_string(), "status" => "error").increment(1);
+                        histogram!("airouter_provider_latency_ms",
+                            "provider" => pname.clone(), "model" => model.to_string()).record(elapsed as f64);
+                        counter!("airouter_provider_errors_total",
+                            "provider" => pname.clone(), "error_class" => class.as_label_str()).increment(1);
                         tracing::warn!(
                             provider = %pname,
                             model = %model,
@@ -289,12 +300,22 @@ impl RouteEngine {
                     Ok(resp) => {
                         let elapsed = start.elapsed().as_millis();
                         tracker.record_request(&self.redis, pname, model, elapsed as u64, true).await;
+                        counter!("airouter_provider_requests_total",
+                            "provider" => pname.clone(), "model" => model.to_string(), "status" => "success").increment(1);
+                        histogram!("airouter_provider_latency_ms",
+                            "provider" => pname.clone(), "model" => model.to_string()).record(elapsed as f64);
                         self.balancer.clear_cooldown(pname).await;
                         return Ok(Json(resp).into_response());
                     }
                     Err(e) => {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
+                        counter!("airouter_provider_requests_total",
+                            "provider" => pname.clone(), "model" => model.to_string(), "status" => "error").increment(1);
+                        histogram!("airouter_provider_latency_ms",
+                            "provider" => pname.clone(), "model" => model.to_string()).record(elapsed as f64);
+                        counter!("airouter_provider_errors_total",
+                            "provider" => pname.clone(), "error_class" => class.as_label_str()).increment(1);
                         tracing::warn!(
                             provider = %pname,
                             model = %model,

@@ -44,6 +44,18 @@ pub enum ProviderError {
     Unavailable(String),
 }
 
+impl ErrorClass {
+    /// Return a Prometheus-safe label string for this error class.
+    pub fn as_label_str(&self) -> &'static str {
+        match self {
+            ErrorClass::RateLimited => "rate_limited",
+            ErrorClass::BadRequest => "bad_request",
+            ErrorClass::ServerError => "server_error",
+            ErrorClass::Transient => "transient",
+        }
+    }
+}
+
 impl ProviderError {
     pub fn is_retryable(&self) -> bool {
         matches!(self, ProviderError::Http(_) | ProviderError::Unavailable(_))

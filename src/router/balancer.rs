@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use crate::provider::ErrorClass;
+use metrics::gauge;
 
 /// Redis-backed load balancer with cooldowns
 pub struct LoadBalancer {
@@ -31,6 +32,7 @@ impl LoadBalancer {
             .arg(&key).arg("1")
             .arg("EX").arg(self.base_cooldown_secs)
             .query_async(&mut conn).await;
+        gauge!("airouter_cooldown_active", "provider" => provider_name.to_string()).set(1.0);
     }
 
     pub async fn mark_cooldown_with_class(&self, provider_name: &str, class: ErrorClass) {
@@ -47,6 +49,7 @@ impl LoadBalancer {
                 .arg(&key).arg("1")
                 .arg("EX").arg(duration)
                 .query_async(&mut conn).await;
+            gauge!("airouter_cooldown_active", "provider" => provider_name.to_string()).set(1.0);
         }
     }
 
@@ -65,6 +68,7 @@ impl LoadBalancer {
         let _: Result<(), _> = redis::cmd("DEL")
             .arg(&key)
             .query_async(&mut conn).await;
+        gauge!("airouter_cooldown_active", "provider" => provider_name.to_string()).set(0.0);
     }
 
     pub async fn select_by_name(&self, names: &[String]) -> Option<String> {

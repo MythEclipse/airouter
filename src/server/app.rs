@@ -19,6 +19,7 @@ use crate::auth::middleware::auth_middleware;
 use crate::provider;
 use crate::router::balancer::LoadBalancer;
 use crate::router::core::RouteEngine;
+use metrics::{counter, histogram, describe_counter, describe_histogram, describe_gauge};
 
 const FRONTEND_DIST: &str = "frontend-dist";
 
@@ -109,6 +110,8 @@ pub fn create_router(
                     );
                 }),
         )
+        // metrics middleware wraps ALL routes including health and metrics
+        .layer(from_fn(metrics_middleware))
         .with_state(state)
 }
 
@@ -147,6 +150,36 @@ impl AppState {
         Ok(())
     }
 
+}
+
+/// Call once at startup to register metric descriptions.
+pub fn describe_metrics() {
+    describe_counter!("airouter_requests_total", "Total HTTP requests by method, path, status");
+    describe_histogram!("airouter_request_duration_ms", "HTTP request duration in ms");
+    describe_counter!("airouter_provider_requests_total", "Total provider requests by provider, model, status");
+    describe_histogram!("airouter_provider_latency_ms", "Provider request latency in ms");
+    describe_counter!("airouter_provider_errors_total", "Total provider errors by provider, error class");
+    describe_gauge!("airouter_cooldown_active", "Whether a provider is currently on cooldown (1=active, 0=inactive)");
+}
+
+/// Tower middleware that records request count and duration as Prometheus metrics.
+async fn metrics_middleware(
+    req: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let start = std::time::Instant::now();
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+
+    let resp = next.run(req).await;
+
+    let status = resp.status().as_u16().to_string();
+    let elapsed_ms = start.elapsed().as_millis() as f64;
+
+    counter!("airouter_requests_total", "method" => method.clone(), "path" => path.clone(), "status" => status.clone()).increment(1);
+    histogram!("airouter_request_duration_ms", "method" => method, "path" => path).record(elapsed_ms);
+
+    resp
 }
 
 async fn handle_metrics(
