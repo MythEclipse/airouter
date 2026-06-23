@@ -20,7 +20,7 @@ dashmap = "6"
 arc-swap = "1"
 sea-orm = { version = "1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-json"] }
 dotenvy = "0.15"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 anyhow = "1"
 thiserror = "2"
