@@ -10,6 +10,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use crate::auth::key_store::KeyStore;
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
@@ -27,9 +28,33 @@ pub fn create_router(
 ) -> Router {
     let state = Arc::new(state);
 
-    let api_routes = crate::api::openai::routes(state.clone())
-        .merge(crate::api::anthropic::routes(state.clone()))
-        .merge(crate::api::dashboard::routes(state.clone()))
+    // ── Sub-routers with per-route-group request body size limits ──────
+    // Body limit layers are applied to each sub-router BEFORE merging
+    // into the main router, ensuring every route group gets its own
+    // maximum payload size.
+    let completions_routes = crate::api::openai::completions_routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(2_000_000)); // 2 MB — chat payloads
+
+    let models_routes = crate::api::openai::models_routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(1_000)); // 1 KB — model listing only
+
+    let anthropic_routes = crate::api::anthropic::routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(2_000_000)); // 2 MB — messages
+
+    let dashboard_routes = crate::api::dashboard::routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(512_000)); // 512 KB — admin CRUD
+
+    let auth_routes = crate::api::auth::routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(2_000)); // 2 KB — credentials only
+
+    let oauth_routes = crate::api::oauth::routes(state.clone())
+        .layer(RequestBodyLimitLayer::new(64_000)); // 64 KB — OAuth tokens
+
+    // ── AI routes (protected by auth + rate_limit) ─────────────────────
+    let ai_routes = completions_routes
+        .merge(models_routes)
+        .merge(anthropic_routes)
+        .merge(dashboard_routes)
         .route_layer(from_fn_with_state(
             state.clone(),
             crate::rate_limit::rate_limit_middleware,
@@ -43,11 +68,11 @@ pub fn create_router(
         .route("/health", axum::routing::get(health_check))
         .route("/metrics", get(handle_metrics))
         .layer(from_fn(request_id_middleware))
-        .merge(api_routes)
+        .merge(ai_routes)
         // Auth routes (login is public — handled in middleware)
-        .merge(crate::api::auth::routes(state.clone()))
+        .merge(auth_routes)
         // OAuth routes (public for authorization flow)
-        .merge(crate::api::oauth::routes(state.clone()))
+        .merge(oauth_routes)
         .fallback_service(
             ServeDir::new(FRONTEND_DIST)
                 .append_index_html_on_directories(true)

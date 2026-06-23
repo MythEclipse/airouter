@@ -9,11 +9,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::server::app::AppState;
 use crate::types::openai::*;
 
-pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+pub fn completions_routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/v1/chat/completions", post(handle_chat_completions))
-        .route("/v1/models", get(handle_list_models))
         .route("/openai/v1/chat/completions", post(handle_chat_completions))
+}
+
+pub fn models_routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/v1/models", get(handle_list_models))
         .route("/openai/v1/models", get(handle_list_models))
 }
 
