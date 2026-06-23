@@ -1,0 +1,19 @@
+pre-commit:
+  parallel: true
+  commands:
+    cargo-check:
+      run: cargo check --workspace --all-targets
+      stage_fixed: true
+      skip:
+        - merge
+        - rebase
+    rustfmt:
+      run: cargo fmt --all --check
+      skip:
+        - merge
+        - rebase
+    clippy:
+      run: cargo clippy --workspace -- -D warnings
+      skip:
+        - merge
+        - rebase
