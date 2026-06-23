@@ -13,7 +13,7 @@ pub mod tracker;
 mod entities;
 mod logging;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use arc_swap::ArcSwap;
 use tracing_subscriber::layer::SubscriberExt;
@@ -24,12 +24,21 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // ── Initialize structured JSON logging with error dedup ──────────
+    let dedup_state = Arc::new(Mutex::new(
+        crate::logging::DedupState::new(Duration::from_secs(1)),
+    ));
+    let json_format = tracing_subscriber::fmt::format().json();
     tracing_subscriber::registry()
-        .with(crate::logging::ErrorDedupLayer::new(Duration::from_secs(1)))
         .with(
             tracing_subscriber::fmt::layer()
-                .json()
-                .with_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())),
+                .event_format(crate::logging::DedupFormatEvent::new(
+                    json_format,
+                    dedup_state,
+                ))
+                .with_filter(
+                    EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "info".into()),
+                ),
         )
         .init();
 

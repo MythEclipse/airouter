@@ -85,11 +85,13 @@ pub async fn execute_fusion(
                     grace_deadline = Some(Instant::now() + Duration::from_millis(straggler_grace_ms));
                 }
             }
-            Ok(Some(Ok((pname, _, Err(e))))) => {
+            Ok(Some(Ok((pname, latency, Err(e))))) => {
                 let error_kind = format!("{:?}", e.error_class());
                 let error_detail = e.to_string();
                 tracing::warn!(
                     provider = %pname,
+                    model = %model_owned,
+                    latency_ms = latency.as_millis() as u64,
                     error = %e,
                     error_kind = %error_kind,
                     error_detail = %error_detail,
@@ -99,6 +101,8 @@ pub async fn execute_fusion(
             }
             Ok(Some(Err(join_err))) => {
                 tracing::warn!(
+                    model = %model_owned,
+                    latency_ms = 0u64,
                     error_kind = "JoinError",
                     error_detail = %join_err,
                     "Fusion join error",
