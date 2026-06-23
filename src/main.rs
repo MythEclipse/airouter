@@ -46,6 +46,8 @@ async fn main() -> Result<(), anyhow::Error> {
         redis_conn.clone(),
         redis_client,
     ).await?;
+    key_store.spawn_invalidation_listener();
+    key_store.spawn_periodic_sync();
     tracing::info!("Redis connected");
 
     // ── Load config from DB (single source of truth) ────────────────
