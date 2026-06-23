@@ -41,10 +41,10 @@ pub const DEFAULT_CHANNEL: &str = "auth:key_invalidate";
 pub struct KeyStore {
     /// Managed Redis connection for SET operations (SADD, SREM, SMEMBERS,
     /// SISMEMBER, PUBLISH).
-    mgr: ConnectionManager,
+    mgr: Option<ConnectionManager>,
 
     /// Connection info for creating a dedicated pub/sub subscription.
-    client: redis::Client,
+    client: Option<redis::Client>,
 
     /// In-process cache for lock-free reads on the hot path.
     cache: Arc<ArcSwap<HashSet<String>>>,
@@ -65,12 +65,16 @@ impl KeyStore {
     /// while `client` is an owned [`redis::Client`] used only when spawning
     /// the invalidation listener (pub/sub requires a dedicated connection).
     pub async fn new(mgr: ConnectionManager, client: redis::Client) -> anyhow::Result<Arc<Self>> {
+        let set_key = std::env::var("KEY_HASH_REDIS_SET")
+            .unwrap_or_else(|_| DEFAULT_SET_KEY.to_string());
+        let channel = std::env::var("KEY_HASH_PUBSUB_CHANNEL")
+            .unwrap_or_else(|_| DEFAULT_CHANNEL.to_string());
         let store = Arc::new(Self {
-            mgr,
-            client,
+            mgr: Some(mgr),
+            client: Some(client),
             cache: Arc::new(ArcSwap::from_pointee(HashSet::new())),
-            set_key: DEFAULT_SET_KEY.to_string(),
-            channel: DEFAULT_CHANNEL.to_string(),
+            set_key,
+            channel,
         });
         store.full_sync().await?;
         Ok(store)
@@ -89,7 +93,7 @@ impl KeyStore {
         }
 
         // Slow path: query Redis
-        let mut conn = self.mgr.clone();
+        let mut conn = self.mgr();
         match redis::cmd("SISMEMBER")
             .arg(&self.set_key)
             .arg(hash)
@@ -116,7 +120,7 @@ impl KeyStore {
     ///
     /// Fails if Redis is unreachable (fail-closed for mutations).
     pub async fn add(&self, hash: &str) -> anyhow::Result<()> {
-        let mut conn = self.mgr.clone();
+        let mut conn = self.mgr();
         conn.sadd::<_, _, ()>(&self.set_key, hash).await?;
         conn.publish::<_, _, ()>(&self.channel, hash).await?;
         self.cache_insert(hash);
@@ -131,7 +135,7 @@ impl KeyStore {
     ///
     /// Fails if Redis is unreachable (fail-closed for mutations).
     pub async fn remove(&self, hash: &str) -> anyhow::Result<()> {
-        let mut conn = self.mgr.clone();
+        let mut conn = self.mgr();
         conn.srem::<_, _, ()>(&self.set_key, hash).await?;
         conn.publish::<_, _, ()>(&self.channel, hash).await?;
         self.cache_remove(hash);
@@ -142,7 +146,7 @@ impl KeyStore {
     /// Full re-sync: reload the entire SET from Redis into the in-process
     /// cache, replacing whatever was there before.
     pub async fn full_sync(&self) -> anyhow::Result<()> {
-        let mut conn = self.mgr.clone();
+        let mut conn = self.mgr();
         let members: Vec<String> = conn.smembers::<_, Vec<String>>(&self.set_key).await?;
         let count = members.len();
         let new_set: HashSet<String> = members.into_iter().collect();
@@ -165,7 +169,7 @@ impl KeyStore {
     ) -> tokio::task::JoinHandle<()> {
         let store = Arc::clone(self);
         let channel = self.channel.clone();
-        let client = self.client.clone();
+        let client = self.client();
         tokio::spawn(async move {
             loop {
                 if let Err(e) = store.run_listener(&channel, &client).await {
@@ -228,6 +232,22 @@ impl KeyStore {
         self.cache.load().is_empty()
     }
 
+    // ── Redis accessors ──────────────────────────────────────────────
+
+    /// Return a cloned `ConnectionManager`, panicking if the store was
+    /// constructed without one (test-only KeyStore).
+    #[inline]
+    fn mgr(&self) -> ConnectionManager {
+        self.mgr.clone().expect("KeyStore: Redis connection manager not configured")
+    }
+
+    /// Return a cloned `redis::Client`, panicking if the store was
+    /// constructed without one (test-only KeyStore).
+    #[inline]
+    fn client(&self) -> redis::Client {
+        self.client.clone().expect("KeyStore: Redis client not configured")
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
     /// Insert a hash into the in-process cache using read-copy-update.
@@ -248,6 +268,27 @@ impl KeyStore {
             Arc::new(new_set)
         });
     }
+
+    /// Check whether a hash is in the in-process cache without contacting Redis.
+    fn cache_contains(&self, hash: &str) -> bool {
+        self.cache.load().contains(hash)
+    }
+}
+
+#[cfg(test)]
+impl KeyStore {
+    /// Create a KeyStore with pre-populated cache and no Redis connection.
+    /// Only cache methods (cache_insert, cache_remove, cache_contains) and
+    /// the cache-hit branch of `contains()` are safe to call.
+    pub fn new_with_cache(cache: HashSet<String>) -> Self {
+        Self {
+            mgr: None,
+            client: None,
+            cache: Arc::new(ArcSwap::from_pointee(cache)),
+            set_key: DEFAULT_SET_KEY.to_string(),
+            channel: DEFAULT_CHANNEL.to_string(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -265,21 +306,46 @@ mod tests {
     }
 
     #[test]
-    fn contains_returns_true_for_cached_hash() {
+    fn cache_insert_adds_hash_to_in_process_cache() {
+        let store = KeyStore::new_with_cache(HashSet::new());
+        store.cache_insert("abc123");
+        assert!(store.cache_contains("abc123"));
+    }
+
+    #[test]
+    fn cache_remove_removes_hash_from_in_process_cache() {
         let mut hashes = HashSet::new();
         hashes.insert("abc123".to_string());
-        let cache = Arc::new(ArcSwap::from_pointee(hashes));
-        // We can't construct a KeyStore without Redis here, but we can
-        // verify the cache lookup logic directly.
-        assert!(cache.load().contains("abc123"));
-        assert!(!cache.load().contains("def456"));
+        let store = KeyStore::new_with_cache(hashes);
+        store.cache_remove("abc123");
+        assert!(!store.cache_contains("abc123"));
+    }
+
+    #[test]
+    fn cache_contains_checks_in_process_cache_only() {
+        let store = KeyStore::new_with_cache(HashSet::new());
+        assert!(!store.cache_contains("anything"));
+    }
+
+    #[test]
+    fn contains_returns_true_for_cached_hash_without_redis() {
+        let mut hashes = HashSet::new();
+        hashes.insert("cached-hash".to_string());
+        let store = KeyStore::new_with_cache(hashes);
+        // Cache hit short-circuits before touching Redis.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert!(rt.block_on(store.contains("cached-hash")));
     }
 
     #[test]
     fn len_and_is_empty_reflect_cache_state() {
-        let hashes: HashSet<String> = [].into();
-        let cache = Arc::new(ArcSwap::from_pointee(hashes));
-        assert!(cache.load().is_empty());
-        assert_eq!(cache.load().len(), 0);
+        let hashes: HashSet<String> = ["a".to_string()].into();
+        let store = KeyStore::new_with_cache(hashes);
+        assert_eq!(store.len(), 1);
+        assert!(!store.is_empty());
+
+        let empty = KeyStore::new_with_cache(HashSet::new());
+        assert_eq!(empty.len(), 0);
+        assert!(empty.is_empty());
     }
 }
