@@ -36,6 +36,26 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), sea_orm::DbEr
         .await?;
     }
 
+    // Migration 003: JWT secrets table
+    let sql3 = include_str!("../../migrations/003_jwt_secrets.sql");
+    for stmt in sql3.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("{};", stmt),
+        ))
+        .await?;
+    }
+
+    // Migration 004: Password columns on server_config
+    let sql4 = include_str!("../../migrations/004_password.sql");
+    for stmt in sql4.split(';').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        db.execute(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("{};", stmt),
+        ))
+        .await?;
+    }
+
     tracing::info!("Database migrations applied successfully");
     Ok(())
 }
