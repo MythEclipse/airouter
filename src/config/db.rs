@@ -215,6 +215,47 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
     Ok(())
 }
 
+/// Seed initial admin password if not yet set.
+/// Uses a random 32-char password, prints to logs at WARN level.
+pub async fn seed_password(db: &DatabaseConnection) -> anyhow::Result<()> {
+    use crate::entities::server_config;
+    use crate::auth::password::{generate_password, hash_password};
+    use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Set};
+
+    let cfg = server_config::Entity::find_by_id(1)
+        .one(db)
+        .await?
+        .expect("server_config row must exist after seed_defaults");
+
+    if cfg.password_hash.is_none() {
+        let pwd = generate_password(32);
+        let hash = hash_password(&pwd);
+
+        server_config::Entity::update_many()
+            .set(server_config::ActiveModel {
+                password_hash: Set(Some(hash)),
+                password_changed_at: Set(None),
+                must_change_password: Set(true),
+                ..Default::default()
+            })
+            .filter(server_config::Column::Id.eq(1))
+            .exec(db)
+            .await?;
+
+        tracing::warn!(
+            "=================================================================\n\
+             INITIAL ADMIN PASSWORD (save this, won't be shown again):\n\
+             \n\
+             {}\n\
+             \n\
+             You will be forced to change it on first login.\n\
+             =================================================================",
+            pwd
+        );
+    }
+    Ok(())
+}
+
 /// Load full configuration from database into Settings struct.
 pub async fn load_config_from_db(db: &DatabaseConnection) -> Result<Settings, sea_orm::DbErr> {
     use crate::entities::{provider, route, api_key, server_config, rate_limit_config};

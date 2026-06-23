@@ -37,6 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let db = Database::connect(&database_url).await?;
     config::db::run_migrations(&db).await?;
     config::db::seed_defaults(&db).await?;
+    config::db::seed_password(&db).await?;
     tracing::info!("Database connected and initialized");
 
     // ── Connect to Redis ────────────────────────────────────────────
@@ -46,8 +47,8 @@ async fn main() -> Result<(), anyhow::Error> {
         redis_conn.clone(),
         redis_client,
     ).await?;
-    key_store.spawn_invalidation_listener();
-    key_store.spawn_periodic_sync();
+    let _key_invalidation = key_store.spawn_invalidation_listener();
+    let _key_periodic_sync = key_store.spawn_periodic_sync();
     tracing::info!("Redis connected");
 
     // ── Load config from DB (single source of truth) ────────────────
@@ -73,6 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // ── JWT secret store (Postgres-backed, used for rotation) ─────────
     let jwt_secrets = crate::auth::jwt_secret_store::JwtSecretStore::new(db.clone()).await?;
+    let _jwt_refresh_handle = jwt_secrets.spawn_refresh_task();
     tracing::info!("JWT secret store initialized");
 
     // ── Default password hash (sha256 of "123456") ──────────────────
