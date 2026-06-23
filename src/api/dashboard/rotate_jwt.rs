@@ -10,6 +10,7 @@ use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth::jwt_secret_store::random_hex_secret;
 use crate::entities::jwt_secret;
 use crate::server::app::AppState;
 
@@ -63,11 +64,14 @@ pub async fn rotate_jwt_secret(
         })?;
 
     // Generate new 64-char hex secret
-    let new_secret = generate_jwt_secret();
+    let new_secret = random_hex_secret();
 
     // Update row: move current -> previous, set new current
     let mut active: jwt_secret::ActiveModel = current.into();
-    active.previous_secret = Set(Some(active.current_secret.clone().unwrap()));
+    let current_secret = active.current_secret.clone().take().ok_or_else(|| {
+        (StatusCode::INTERNAL_SERVER_ERROR, "current_secret is NULL".to_string())
+    })?;
+    active.previous_secret = Set(Some(current_secret));
     active.previous_expires_at = Set(Some(previous_expires_at));
     active.rotated_at = Set(Some(now));
     active.current_secret = Set(new_secret);
@@ -100,14 +104,6 @@ pub async fn rotate_jwt_secret(
     ))
 }
 
-/// Generate a 64-character hex string from 32 random bytes.
-fn generate_jwt_secret() -> String {
-    use rand::Rng;
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill(&mut bytes);
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,8 +114,8 @@ mod tests {
     }
 
     #[test]
-    fn generate_jwt_secret_is_64_hex_chars() {
-        let s = generate_jwt_secret();
+    fn random_hex_secret_is_64_hex_chars() {
+        let s = random_hex_secret();
         assert_eq!(s.len(), 64);
         assert!(s.chars().all(|c| c.is_ascii_hexdigit()));
     }

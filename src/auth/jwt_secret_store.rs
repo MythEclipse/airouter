@@ -121,7 +121,7 @@ async fn ensure_jwt_secret_row(db: &DatabaseConnection) -> anyhow::Result<()> {
 }
 
 /// Generate a 64-character hex string from 32 random bytes.
-fn random_hex_secret() -> String {
+pub fn random_hex_secret() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
