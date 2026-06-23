@@ -66,6 +66,7 @@ pub struct AppState {
     pub registry: Arc<ArcSwap<provider::ProviderRegistry>>,
     pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
     pub jwt_secret: Arc<ArcSwap<String>>,
+    pub jwt_secrets: Arc<crate::auth::jwt_secret_store::JwtSecretStore>,
     pub password_hash: Arc<ArcSwap<String>>,
     pub rate_limiter: crate::rate_limit::RateLimitState,
     pub balancer: Arc<LoadBalancer>,

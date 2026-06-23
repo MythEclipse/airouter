@@ -8,6 +8,7 @@ pub mod routes;
 pub mod api_keys;
 pub mod settings;
 pub mod metrics;
+pub mod rotate_jwt;
 
 use std::sync::Arc;
 use axum::Router;
@@ -20,4 +21,5 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .merge(routes::routes())
         .merge(api_keys::routes())
         .merge(settings::routes())
+        .merge(rotate_jwt::routes())
 }

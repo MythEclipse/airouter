@@ -70,6 +70,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let jwt_secret = Arc::new(ArcSwap::new(Arc::new(jwt_secret)));
     tracing::info!("JWT secret generated");
 
+    // ── JWT secret store (Postgres-backed, used for rotation) ─────────
+    let jwt_secrets = crate::auth::jwt_secret_store::JwtSecretStore::new(db.clone()).await?;
+    tracing::info!("JWT secret store initialized");
+
     // ── Default password hash (sha256 of "123456") ──────────────────
     let password_hash = Arc::new(ArcSwap::new(Arc::new(
         crate::auth::sha2_hex("123456")
@@ -100,6 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
         registry: registry.clone(),
         key_hashes: key_hashes.clone(),
         jwt_secret: jwt_secret.clone(),
+        jwt_secrets: jwt_secrets.clone(),
         password_hash: password_hash.clone(),
         rate_limiter,
         balancer,
