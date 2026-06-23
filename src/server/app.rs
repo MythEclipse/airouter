@@ -67,9 +67,7 @@ pub struct AppState {
     // TODO(Task 11): remove after migration to KeyStore
     // pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
     pub key_store: Arc<KeyStore>,
-    pub jwt_secret: Arc<ArcSwap<String>>,
     pub jwt_secrets: Arc<crate::auth::jwt_secret_store::JwtSecretStore>,
-    pub password_hash: Arc<ArcSwap<String>>,
     pub rate_limiter: crate::rate_limit::RateLimitState,
     pub balancer: Arc<LoadBalancer>,
     pub engine: Arc<RouteEngine>,
@@ -95,19 +93,6 @@ impl AppState {
         Ok(())
     }
 
-    /// Reload only the key hashes from DB — fast path for API key CRUD
-    /// TODO(Task 11): remove after migration to KeyStore
-    #[allow(dead_code)]
-    pub async fn reload_key_hashes(&self) -> Result<(), sea_orm::DbErr> {
-        use crate::entities::api_key;
-        use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
-        let key_rows = api_key::Entity::find()
-            .filter(api_key::Column::Enabled.eq(true))
-            .all(&self.db).await?;
-        let _hashes: std::collections::HashSet<String> = key_rows.into_iter().map(|r| r.key_hash).collect();
-        tracing::warn!("reload_key_hashes is deprecated — KeyStore is now the source of truth");
-        Ok(())
-    }
 }
 
 async fn health_check() -> &'static str {

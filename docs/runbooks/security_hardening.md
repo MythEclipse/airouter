@@ -31,13 +31,19 @@ Operational guide for the Security Hardening feature set.
 Direct database update:
 
 ```sql
+-- Requires pgcrypto extension: CREATE EXTENSION IF NOT EXISTS pgcrypto;
 UPDATE server_config SET
-  password_hash = encode(sha256('NEW_PASSWORD_HERE'), 'hex'),
+  password_hash = encode(digest('NEW_PASSWORD_HERE', 'sha256'), 'hex'),
   must_change_password = true
 WHERE id = 1;
 ```
 
 Replace `NEW_PASSWORD_HERE` with desired new password. After update, login with new password and change it via UI.
+
+Alternatively, compute the hash externally and update directly:
+  ```bash
+  python3 -c "import hashlib; print(hashlib.sha256(b'new_password_here').hexdigest())"
+  ```
 
 ## JWT Secret Rotation
 
