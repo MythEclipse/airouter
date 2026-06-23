@@ -65,7 +65,8 @@ pub fn create_router(
         ));
 
     Router::new()
-        .route("/health", axum::routing::get(health_check))
+        .route("/health", get(crate::api::health::health_check))
+        .route("/health/ready", get(crate::api::health::health_ready))
         .route("/metrics", get(handle_metrics))
         .layer(from_fn(request_id_middleware))
         .merge(ai_routes)
@@ -118,10 +119,6 @@ impl AppState {
         Ok(())
     }
 
-}
-
-async fn health_check() -> &'static str {
-    "OK"
 }
 
 async fn handle_metrics(
