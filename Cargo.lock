@@ -44,7 +44,7 @@ dependencies = [
  "once_cell",
  "pin-project",
  "proptest",
- "rand 0.8.6",
+ "rand 0.9.4",
  "redis",
  "reqwest",
  "sea-orm",
