@@ -13,10 +13,8 @@ pub mod tracker;
 mod entities;
 
 use std::sync::Arc;
-use std::collections::HashSet;
 use arc_swap::ArcSwap;
 use tracing_subscriber::EnvFilter;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -43,7 +41,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // ── Connect to Redis ────────────────────────────────────────────
     let redis_client = redis::Client::open(redis_url)?;
-    let redis_conn = redis::aio::ConnectionManager::new(redis_client).await?;
+    let redis_conn = redis::aio::ConnectionManager::new(redis_client.clone()).await?;
+    let key_store = crate::auth::key_store::KeyStore::new(
+        redis_conn.clone(),
+        redis_client,
+    ).await?;
     tracing::info!("Redis connected");
 
     // ── Load config from DB (single source of truth) ────────────────
@@ -57,9 +59,6 @@ async fn main() -> Result<(), anyhow::Error> {
         provider::ProviderRegistry::from_config(&settings.load().providers)
     )));
     tracing::info!(provider_count = %registry.load().all().count(), "Provider registry initialized");
-
-    // ── Load key hashes for auth ────────────────────────────────────
-    let key_hashes = Arc::new(ArcSwap::new(Arc::new(load_key_hashes(&db).await)));
 
     // ── JWT secret (random, regenerated on each restart) ────────────
     use rand::Rng;
@@ -102,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
         redis: redis_conn,
         config: settings.clone(),
         registry: registry.clone(),
-        key_hashes: key_hashes.clone(),
+        key_store: key_store.clone(),
         jwt_secret: jwt_secret.clone(),
         jwt_secrets: jwt_secrets.clone(),
         password_hash: password_hash.clone(),
@@ -128,19 +127,4 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Load enabled API key hashes from database
-async fn load_key_hashes(db: &sea_orm::DatabaseConnection) -> HashSet<String> {
-    use crate::entities::api_key;
-    use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
-    api_key::Entity::find()
-        .filter(api_key::Column::Enabled.eq(true))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| r.key_hash)
-        .collect()
-}
-
-/// Re-export AppState for other modules
 pub use server::app::AppState;

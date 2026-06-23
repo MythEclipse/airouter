@@ -42,15 +42,15 @@ async fn create_api_key(
     let model = api_key::ActiveModel {
         id: Set(Uuid::new_v4()),
         key_name: Set(body.key_name),
-        key_hash: Set(hash),
+        key_hash: Set(hash.clone()),
         key_prefix: Set(prefix.clone()),
         enabled: Set(true),
         created_at: Set(chrono::Utc::now()),
     };
     let row = model.insert(&state.db).await
         .map_err(|e| err_400(&format!("Insert failed: {}", e)))?;
-    state.reload_key_hashes().await
-        .map_err(|e| err_500(&format!("Failed to reload key hashes: {}", e)))?;
+    state.key_store.add(&hash).await
+        .map_err(|e| err_500(&format!("Failed to sync key hash to Redis: {}", e)))?;
 
     Ok((StatusCode::CREATED, Json(CreateApiKeyResponse {
         id: row.id.to_string(),
@@ -68,8 +68,9 @@ async fn delete_api_key(
     let existing = api_key::Entity::find_by_id(id).one(&state.db).await
         .map_err(|_| err_500("Database error"))?
         .ok_or_else(|| err_404("API key not found"))?;
+    let hash = existing.key_hash.clone();
     existing.delete(&state.db).await.map_err(|_| err_500("Delete failed"))?;
-    state.reload_key_hashes().await
-        .map_err(|e| err_500(&format!("Failed to reload key hashes: {}", e)))?;
+    state.key_store.remove(&hash).await
+        .map_err(|e| err_500(&format!("Failed to remove key hash from Redis: {}", e)))?;
     Ok(StatusCode::NO_CONTENT)
 }

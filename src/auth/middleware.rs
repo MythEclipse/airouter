@@ -71,10 +71,9 @@ pub async fn auth_middleware(
                 return unauthorized_response();
             }
 
-            // AI routes: check legacy API key hash
+            // AI routes: check API key hash via KeyStore
             let hash = sha2_hex(&token);
-            let hashes = state.key_hashes.load();
-            if hashes.contains(&hash) {
+            if state.key_store.contains(&hash).await {
                 next.run(req).await
             } else {
                 unauthorized_response()

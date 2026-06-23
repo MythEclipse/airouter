@@ -6,9 +6,9 @@ use axum::{
     routing::get,
     Router,
 };
-use std::collections::HashSet;
 use std::sync::Arc;
 use arc_swap::ArcSwap;
+use crate::auth::key_store::KeyStore;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::services::{ServeDir, ServeFile};
@@ -64,7 +64,9 @@ pub struct AppState {
     pub redis: redis::aio::ConnectionManager,
     pub config: Arc<ArcSwap<crate::config::settings::Settings>>,
     pub registry: Arc<ArcSwap<provider::ProviderRegistry>>,
-    pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
+    // TODO(Task 11): remove after migration to KeyStore
+    // pub key_hashes: Arc<ArcSwap<HashSet<String>>>,
+    pub key_store: Arc<KeyStore>,
     pub jwt_secret: Arc<ArcSwap<String>>,
     pub jwt_secrets: Arc<crate::auth::jwt_secret_store::JwtSecretStore>,
     pub password_hash: Arc<ArcSwap<String>>,
@@ -84,22 +86,26 @@ impl AppState {
         self.config.store(Arc::new(settings));
         self.registry.store(Arc::new(registry));
 
-        // Load key hashes from DB (separate call so key hot-reload is not dependent on provider/route queries)
-        self.reload_key_hashes().await?;
+        // Sync key hashes from Redis (source of truth moved to KeyStore)
+        if let Err(e) = self.key_store.full_sync().await {
+            tracing::warn!(error = %e, "KeyStore full sync during reload_config");
+        }
 
         tracing::info!("Configuration hot-reloaded from database");
         Ok(())
     }
 
     /// Reload only the key hashes from DB — fast path for API key CRUD
+    /// TODO(Task 11): remove after migration to KeyStore
+    #[allow(dead_code)]
     pub async fn reload_key_hashes(&self) -> Result<(), sea_orm::DbErr> {
         use crate::entities::api_key;
         use sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
         let key_rows = api_key::Entity::find()
             .filter(api_key::Column::Enabled.eq(true))
             .all(&self.db).await?;
-        let hashes: HashSet<String> = key_rows.into_iter().map(|r| r.key_hash).collect();
-        self.key_hashes.store(Arc::new(hashes));
+        let _hashes: std::collections::HashSet<String> = key_rows.into_iter().map(|r| r.key_hash).collect();
+        tracing::warn!("reload_key_hashes is deprecated — KeyStore is now the source of truth");
         Ok(())
     }
 }
