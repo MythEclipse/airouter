@@ -21,8 +21,14 @@ pub fn Analytics() -> impl IntoView {
         async move {
             match fetch_dashboard().await {
                 Ok(data) => {
-                    let fc = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").count();
-                    let fm: usize = data.providers.iter().filter(|p| p.provider_type == "opencode_free" || p.provider_type == "mimo_free").map(|p| p.model_count).sum();
+                    // Use category field instead of hardcoded provider_type strings
+                    let fc = data.providers.iter()
+                        .filter(|p| p.category.as_deref() == Some("free") || p.category.as_deref() == Some("free-tier"))
+                        .count();
+                    let fm: usize = data.providers.iter()
+                        .filter(|p| p.category.as_deref() == Some("free") || p.category.as_deref() == Some("free-tier"))
+                        .map(|p| p.model_count)
+                        .sum();
                     metrics.set(data.metrics);
                     live.set(data.live_metrics);
                     free_count.set(fc);
@@ -40,12 +46,12 @@ pub fn Analytics() -> impl IntoView {
     view! {
         <div class="animate-fade-in">
             <div class="mb-8">
-                <h1 class="text-2xl font-bold text-primary">"Analytics"</h1>
+                <h1 class="text-2xl font-bold text-primary font-display tracking-tight">"Analytics"</h1>
                 <p class="text-sm text-secondary mt-1">"Gateway usage overview"</p>
             </div>
 
             {move || (!error.get().is_empty()).then(||
-                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/30">{error.get()}</p> }
+                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/20">{error.get()}</p> }
             )}
 
             {move || loading.get().then(|| view! { <SkeletonCards count=4/> })}
@@ -59,55 +65,34 @@ pub fn Analytics() -> impl IntoView {
                 let upt = format!("{}h {}m", lv.uptime_seconds / 3600, (lv.uptime_seconds % 3600) / 60);
 
                 view! {
-                    <h2 class="text-lg font-semibold text-primary mb-4">"Providers & Models"</h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Providers"</p>
-                            <p class="text-2xl font-bold text-primary">{m.total_providers.to_string()}</p>
-                            <p class="text-xs text-muted mt-1">"Configured"</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Models"</p>
-                            <p class="text-2xl font-bold text-primary">{m.total_models.to_string()}</p>
-                            <p class="text-xs text-muted mt-1">"Available"</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Models"</p>
-                            <p class="text-2xl font-bold text-primary">{f_pct.to_string() + "%"}</p>
-                            <p class="text-xs text-muted mt-1">{fm.to_string() + " of " + &m.total_models.to_string() + " models"}</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Free Providers"</p>
-                            <p class="text-2xl font-bold text-primary">{fc.to_string()}</p>
-                            <p class="text-xs text-muted mt-1">"Built-in"</p>
-                        </div>
+                    <h2 class="text-base font-semibold text-primary font-display tracking-tight mb-4">"Providers & Models"</h2>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                        <StatCard label="Total Providers" value=m.total_providers.to_string() sub="Configured".to_string()/>
+                        <StatCard label="Total Models" value=m.total_models.to_string() sub="Available".to_string()/>
+                        <StatCard label="Free Models" value=format!("{}%", f_pct) sub=format!("{} of {} models", fm, m.total_models)/>
+                        <StatCard label="Free Providers" value=fc.to_string() sub="Built-in".to_string()/>
                     </div>
 
-                    <h2 class="text-lg font-semibold text-primary mb-4">"Live Metrics"</h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Total Requests"</p>
-                            <p class="text-2xl font-bold text-primary">{lv.total_requests.to_string()}</p>
-                            <p class="text-xs text-muted mt-1">"Since start"</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Errors"</p>
-                            <p class="text-2xl font-bold text-primary">{lv.total_errors.to_string()}</p>
-                            <p class="text-xs text-muted mt-1">{format!("{:.1}% error rate", lv.error_rate * 100.0)}</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Avg Latency"</p>
-                            <p class="text-2xl font-bold text-primary">{format!("{:.0}ms", lv.avg_latency_ms)}</p>
-                            <p class="text-xs text-muted mt-1">"Per request"</p>
-                        </div>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 hover:-translate-y-0.5 transition-all duration-200">
-                            <p class="text-xs text-secondary mb-1.5 font-medium uppercase tracking-wider">"Uptime"</p>
-                            <p class="text-2xl font-bold text-primary">{upt}</p>
-                            <p class="text-xs text-muted mt-1">"Server running"</p>
-                        </div>
+                    <h2 class="text-base font-semibold text-primary font-display tracking-tight mb-4">"Live Metrics"</h2>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <StatCard label="Total Requests" value=lv.total_requests.to_string() sub="Since start".to_string()/>
+                        <StatCard label="Errors" value=lv.total_errors.to_string() sub=format!("{:.1}% error rate", lv.error_rate * 100.0)/>
+                        <StatCard label="Avg Latency" value=format!("{:.0}ms", lv.avg_latency_ms) sub="Per request".to_string()/>
+                        <StatCard label="Uptime" value=upt sub="Server running".to_string()/>
                     </div>
                 }
             })}
+        </div>
+    }
+}
+
+#[component]
+fn StatCard(label: &'static str, value: String, sub: String) -> impl IntoView {
+    view! {
+        <div class="card-base p-5">
+            <p class="text-[11px] text-muted font-semibold uppercase tracking-wider mb-1.5">{label}</p>
+            <p class="text-2xl font-bold text-primary font-display tracking-tight">{value}</p>
+            <p class="text-xs text-secondary mt-1">{sub}</p>
         </div>
     }
 }

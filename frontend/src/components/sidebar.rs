@@ -13,58 +13,36 @@ pub fn Sidebar() -> impl IntoView {
     ];
 
     view! {
-        <nav class="w-72 bg-surface border-r border-border-subtle
-                    flex-shrink-0 flex flex-col h-screen sticky top-0">
-            <div class="p-6 flex flex-col gap-4">
-                // macOS traffic light dots
-                <div class="flex items-center gap-2">
-                    <span class="w-3 h-3 rounded-full bg-red-400"></span>
-                    <span class="w-3 h-3 rounded-full bg-yellow-400"></span>
-                    <span class="w-3 h-3 rounded-full bg-green-400"></span>
-                </div>
-                // Brand
-                <div class="flex items-baseline gap-2">
-                    <h1 class="text-lg font-bold text-accent">"AIRouter"</h1>
-                    <span class="text-xs text-muted">"v0.1.0"</span>
-                </div>
+        <nav class="w-56 bg-surface border-r border-border-subtle
+                    flex-shrink-0 flex flex-col h-screen sticky top-0 z-30">
+            // Brand header
+            <div class="px-5 pt-5 pb-4 border-b border-border-subtle">
+                <h1 class="text-base font-bold text-primary font-display tracking-tight">"AIRouter"</h1>
+                <p class="text-[11px] text-muted mt-0.5 tracking-wide">"AI Gateway"</p>
             </div>
 
             // Navigation
-            <ul class="flex flex-col gap-1 px-3">
-                {nav_items
-                    .into_iter()
-                    .map(|(href, label, icon_path)| {
-                        view! {
-                            <li>
-                                <A
-                                    href=href
-                                    class="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg \
-                                           text-secondary hover:text-primary hover:bg-surface-2 transition-all duration-150"
-                                    active_class="bg-accent-bg text-accent hover:bg-accent-bg font-medium"
-                                >
-                                    <svg
-                                        class="w-5 h-5 flex-shrink-0"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="1.5"
-                                            d=icon_path
-                                        />
-                                    </svg>
-                                    {label}
-                                </A>
-                            </li>
-                        }
-                    })
-                    .collect::<Vec<_>>()}
-            </ul>
+            <div class="flex-1 flex flex-col gap-0.5 px-2 py-3">
+                <span class="px-3 py-1.5 text-[10px] font-semibold text-muted uppercase tracking-widest">"Menu"</span>
+                {nav_items.into_iter().map(|(href, label, icon_path)| {
+                    view! {
+                        <A href=href
+                            class="flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg \
+                                   text-secondary hover:text-primary hover:bg-surface-2 \
+                                   transition-all duration-150"
+                            active_class="bg-accent-bg text-accent hover:bg-accent-bg font-medium"
+                        >
+                            <svg class="w-4.5 h-4.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d=icon_path />
+                            </svg>
+                            {label}
+                        </A>
+                    }
+                }).collect::<Vec<_>>()}
+            </div>
 
             // Footer
-            <div class="mt-auto p-6 border-t border-border-subtle flex flex-col gap-3">
+            <div class="px-4 py-4 border-t border-border-subtle flex flex-col gap-3">
                 <button on:click=move|_| {
                     if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
                         let _ = storage.remove_item("dashboard_token");
@@ -74,14 +52,15 @@ pub fn Sidebar() -> impl IntoView {
                         let _ = loc.set_href("/login");
                     }
                 }
-                    class="flex items-center gap-2 text-xs text-secondary hover:text-danger transition-colors px-2 py-1.5 rounded-lg hover:bg-danger-bg/50 w-full">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    class="flex items-center gap-2 text-xs text-muted hover:text-danger transition-colors px-2 py-1.5 rounded-lg hover:bg-danger-bg/50 w-full"
+                >
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                     </svg>
                     "Logout"
                 </button>
-                <div class="flex items-center gap-2 text-xs text-muted/60">
-                    <span class="w-2 h-2 rounded-full bg-success animate-pulse-soft"></span>
+                <div class="flex items-center gap-2 text-[11px] text-muted/60">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_6px_rgba(45,212,191,0.5)]"></span>
                     "System Online"
                 </div>
             </div>

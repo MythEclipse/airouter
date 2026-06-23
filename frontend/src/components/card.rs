@@ -6,18 +6,11 @@ pub fn Card(
     #[prop(optional)] hover: bool,
     children: Children,
 ) -> impl IntoView {
-    let hover_class = if hover {
-        "transition-all duration-200 hover:border-surface"
-    } else {
-        ""
-    };
+    let base = "card-base p-5";
+    let hover_class = if hover { "hover:border-surface" } else { "" };
 
     view! {
-        <div class=move || format!(
-            "bg-surface border border-border-subtle rounded-[14px] p-6 {} {}",
-            class,
-            hover_class
-        )>
+        <div class=move || format!("{} {} {}", base, class, hover_class)>
             {children()}
         </div>
     }
@@ -29,8 +22,8 @@ pub fn CardSection(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <div class="border-b border-border-subtle pb-4 mb-4">
-            <h3 class="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">
+        <div class="mb-5">
+            <h3 class="text-xs font-semibold text-muted uppercase tracking-widest mb-3 pb-2.5 border-b border-border-subtle">
                 {title}
             </h3>
             {children()}
@@ -44,25 +37,20 @@ pub fn CardRow(
     value: String,
     #[prop(optional)] mono: bool,
 ) -> impl IntoView {
-    let value_class = if mono {
-        "text-sm text-primary font-mono"
+    let val_cls = if mono {
+        "text-sm font-mono text-primary truncate max-w-[200px] text-right"
     } else {
-        "text-sm text-primary"
+        "text-sm text-primary text-right truncate max-w-[200px]"
     };
-
     view! {
-        <div class="flex items-center justify-between py-2">
-            <span class="text-sm text-secondary">{label}</span>
-            <span class=value_class>{value}</span>
+        <div class="flex items-center justify-between gap-4 py-1.5">
+            <span class="text-xs text-secondary shrink-0">{label}</span>
+            <span class=val_cls>{value}</span>
         </div>
     }
 }
 
 #[component]
 pub fn CardGrid(children: Children) -> impl IntoView {
-    view! {
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {children()}
-        </div>
-    }
+    view! { <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">{children()}</div> }
 }

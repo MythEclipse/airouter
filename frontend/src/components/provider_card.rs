@@ -3,7 +3,6 @@ use leptos::*;
 use crate::api::*;
 use crate::components::provider_icon::{ProviderIcon, category_style};
 
-/// Renders a single provider card in the grid, with OAuth/WebCookie login support.
 #[component]
 pub fn ProviderCard(
     provider: ProviderDetail,
@@ -32,7 +31,6 @@ pub fn ProviderCard(
     let is_wc = cat_str == "web-cookie";
     let supports_dev = matches!(ptype.as_str(), "github" | "kimi_coding" | "codebuddy" | "cursor" | "kilocode");
 
-    // Convert to Rc so we can clone in nested closures
     let on_edit: Rc<dyn Fn(ProviderDetail) + 'static> = Rc::from(on_edit);
     let on_test: Rc<dyn Fn(String, String) + 'static> = Rc::from(on_test);
     let on_oauth_login: Rc<dyn Fn(String) + 'static> = Rc::from(on_oauth_login);
@@ -43,43 +41,41 @@ pub fn ProviderCard(
     let pid_status = pid.clone();
 
     view! {
-        <div class="bg-surface border border-border-subtle rounded-[14px] p-4 transition-all duration-200 hover:border-surface hover:-translate-y-0.5 hover:shadow-lg group cursor-pointer"
-            style=move || if !enabled { "opacity: 0.7" } else { "" }
+        <div class="card-base p-4 cursor-pointer"
+            style=move || if !enabled { "opacity:0.6" } else { "" }
             on:click=move|_| {
                 let eid = expanded.get();
                 if eid.as_deref() == Some(&pid_click) { expanded.set(None); }
                 else { expanded.set(Some(pid_click.clone())); }
             }
         >
-            // Header: icon + name
+            // Header
             <div class="flex items-center gap-3 mb-3">
                 <ProviderIcon provider_type=ptype.clone() name=pname.clone() size=40/>
                 <div class="min-w-0 flex-1">
-                    <h3 class="font-semibold text-sm text-primary truncate">{pname.clone()}</h3>
-                    <span class="text-xs text-muted truncate block">{ptype.clone()}</span>
+                    <h3 class="font-semibold text-sm text-primary truncate font-display">{pname.clone()}</h3>
+                    <span class="text-[11px] text-muted truncate block font-mono">{ptype.clone()}</span>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     {move || if enabled {
-                        view! { <span class="flex items-center gap-1 text-xs text-success"><span class="w-1.5 h-1.5 rounded-full bg-success"></span>"Active"</span> }.into_view()
+                        view! { <span class="flex items-center gap-1 text-[11px] text-success font-medium"><span class="w-1.5 h-1.5 rounded-full bg-success shadow-[0_0_6px_rgba(45,212,191,0.5)]"></span>"Active"</span> }.into_view()
                     } else if has_conn {
-                        view! { <span class="flex items-center gap-1 text-xs text-accent"><span class="w-1.5 h-1.5 rounded-full bg-accent"></span>"Connected"</span> }.into_view()
+                        view! { <span class="flex items-center gap-1 text-[11px] text-accent font-medium"><span class="w-1.5 h-1.5 rounded-full bg-accent"></span>"Connected"</span> }.into_view()
                     } else if is_oauth || is_wc {
-                        view! { <span class="flex items-center gap-1 text-xs text-[#db6b28]"><span class="w-1.5 h-1.5 rounded-full bg-[#db6b28] animate-pulse"></span>"Login Needed"</span> }.into_view()
+                        view! { <span class="flex items-center gap-1 text-[11px] text-warning font-medium"><span class="w-1.5 h-1.5 rounded-full bg-warning animate-pulse-soft"></span>"Login Needed"</span> }.into_view()
                     } else {
-                        view! { <span class="flex items-center gap-1 text-xs text-muted"><span class="w-1.5 h-1.5 rounded-full bg-muted"></span>"Disabled"</span> }.into_view()
+                        view! { <span class="flex items-center gap-1 text-[11px] text-muted"><span class="w-1.5 h-1.5 rounded-full bg-muted"></span>"Disabled"</span> }.into_view()
                     }}
-                    <svg class="w-4 h-4 text-muted transition-transform duration-200" class:rotate-180=move || expanded.get().as_deref() == Some(&pid_status) fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <svg class="w-3.5 h-3.5 text-muted transition-transform duration-200" class:rotate-180=move || expanded.get().as_deref() == Some(&pid_status) fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                 </div>
             </div>
 
             // Category badge
             <div class="mb-2">{{ let (cls, _) = category_style(&cat_str); view! { <span class={cls}>{if is_oauth { "OAuth" } else if is_wc { "Web Cookie" } else if cat_str == "free" { "Free" } else if cat_str == "free-tier" { "Free Tier" } else { "API Key" }}</span> }}}</div>
 
-            // Expanded / collapsed
             {let expanded = expanded; move || {
                 let is_exp = expanded.get().as_deref() == Some(&pid);
                 if is_exp {
-                    // Clone all captures BEFORE the inner move closures
                     let ptype = ptype.clone();
                     let pname = pname.clone();
                     let pid = pid.clone();
@@ -109,7 +105,7 @@ pub fn ProviderCard(
                     }.into_view()
                 } else {
                     view! {
-                        <div class="text-xs text-secondary">
+                        <div class="text-[11px] text-secondary mt-1">
                             {if is_oauth && !has_conn { "Click to login".to_string() }
                             else if is_wc && !has_conn { "Click to import cookie".to_string() }
                             else { format!("{} models", model_count) }}
@@ -121,7 +117,6 @@ pub fn ProviderCard(
     }
 }
 
-/// Inner expanded view — receives Rc'd callbacks so it can clone them in closures.
 #[component]
 fn ExpandedContent(
     ptype: String,
@@ -143,16 +138,14 @@ fn ExpandedContent(
     model_test_results: RwSignal<std::collections::HashMap<String, TestProviderResponse>>,
     testing_model: RwSignal<Option<String>>,
 ) -> impl IntoView {
-    let enabled = provider.enabled;
-
     view! {
-        <div class="space-y-1.5 text-xs mt-2 pt-3 border-t border-border-subtle">
-            <div class="flex items-center justify-between">
-                <span class="text-secondary">"Base URL"</span>
-                <span class="text-primary truncate max-w-[180px] text-right font-mono">{base_url}</span>
+        <div class="space-y-1.5 text-xs mt-3 pt-3 border-t border-border-subtle animate-fade-in">
+            <div class="flex items-center justify-between py-1">
+                <span class="text-secondary text-[11px]">"Base URL"</span>
+                <span class="text-primary truncate max-w-[180px] text-right font-mono text-[11px]">{base_url}</span>
             </div>
 
-            // ── OAuth Login UI ──
+            // OAuth Login UI
             {if is_oauth && !has_conn {
                 let ol = on_oauth_login.clone();
                 let pt = ptype.clone();
@@ -161,9 +154,9 @@ fn ExpandedContent(
                 view! {
                     <div class="pt-3 border-t border-border-subtle space-y-2">
                         <button on:click=move|ev| { ev.stop_propagation(); ol(pt.clone()); }
-                            class="w-full px-3 py-2 text-xs font-medium rounded-lg text-white bg-[#db6b28] hover:bg-[#c05d22] active:scale-[0.97] transition-all duration-150 flex items-center justify-center gap-2"
+                            class="btn-base w-full px-3 py-2 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover"
                         >
-                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
                             "Login with "{pt_txt}
                         </button>
                         {supports_dev.then(|| {
@@ -171,7 +164,7 @@ fn ExpandedContent(
                             let pt3 = pt2.clone();
                             view! {
                                 <button on:click=move|ev| { ev.stop_propagation(); dc(pt3.clone()); }
-                                    class="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-[#db6b28]/30 text-[#db6b28] hover:bg-[rgba(219,107,40,0.1)] active:scale-[0.97] transition-all duration-150"
+                                    class="btn-base w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent-bg"
                                 >"Device Code Login"</button>
                             }
                         })}
@@ -179,17 +172,17 @@ fn ExpandedContent(
                 }.into_view()
             } else { view! { <span></span> }.into_view() }}
 
-            // ── WebCookie Import UI ──
+            // WebCookie Import UI
             {if is_wc && !has_conn {
                 let it = on_import_token.clone();
                 let pt = ptype.clone();
                 let input_id = format!("wc_{}", pid);
                 view! {
-                    <div class="pt-3 border-t border-border-subtle">
-                        <label class="text-secondary block mb-1.5">"Session Cookie"</label>
+                    <div class="pt-3 border-t border-border-subtle space-y-2">
+                        <label class="text-secondary text-[11px] block">"Session Cookie"</label>
                         <input type="password" id=input_id.clone()
                             placeholder="paste session cookie..."
-                            class="w-full px-2 py-1.5 bg-surface-2 border border-surface rounded-lg text-xs text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors mb-2"
+                            class="w-full px-2.5 py-1.5 bg-surface-2 border border-border-subtle rounded-lg text-xs text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"
                         />
                         <button on:click=move|ev| {
                             ev.stop_propagation();
@@ -200,15 +193,15 @@ fn ExpandedContent(
                                 .unwrap_or_default();
                             if !val.is_empty() { it(pt.clone(), val); }
                         }
-                            class="w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-[#db6b9a] text-white hover:bg-[#c05d82] active:scale-[0.97] transition-all duration-150 flex items-center justify-center gap-2"
+                            class="btn-base w-full px-3 py-1.5 text-xs font-medium rounded-lg bg-[#db6b9a] text-white hover:bg-[#c05d82]"
                         >"Import Cookie"</button>
                     </div>
                 }.into_view()
             } else { view! { <span></span> }.into_view() }}
 
-            // ── Models List ──
+            // Models List
             {if models.is_empty() {
-                view! { <div class="pt-2 text-xs text-muted">"No models configured"</div> }.into_view()
+                view! { <div class="pt-2 text-[11px] text-muted">"No models configured"</div> }.into_view()
             } else {
                 let models2 = models.clone();
                 let ptype2 = ptype.clone();
@@ -216,7 +209,7 @@ fn ExpandedContent(
                 let pid2 = pid.clone();
                 view! {
                     <div class="pt-2">
-                        <span class="text-secondary block mb-1.5">"Models"</span>
+                        <span class="text-secondary text-[11px] block mb-1.5 font-medium">"Models"</span>
                         <div class="flex flex-col gap-1">
                             {models2.into_iter().map(|m| {
                                 let mdl = m.clone();
@@ -229,15 +222,19 @@ fn ExpandedContent(
                                 let pname3 = pname2.clone();
                                 view! {
                                     <div class="flex items-center gap-2 py-1.5 px-2.5 rounded-lg bg-surface-2/50 hover:bg-surface-2 transition-colors">
-                                        <span class="text-xs text-primary font-mono flex-1">{m.clone()}</span>
+                                        <span class="text-xs text-primary font-mono flex-1 truncate">{m.clone()}</span>
                                         <button on:click=move|ev| { ev.stop_propagation(); on_t(pid_inner.clone(), mdl.clone()); }
-                                            class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md text-secondary hover:text-accent hover:bg-accent-bg active:scale-[0.97] transition-all duration-150 border border-transparent hover:border-accent/30"
+                                            class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md text-secondary hover:text-accent hover:bg-accent-bg transition-colors"
                                         >
-                                            <ProviderIcon provider_type=ptype3.clone() name=pname3.clone() size=16/>
-                                            {if busy { "Test..." } else { "Test" }}
+                                            {if busy {
+                                                view! { <svg class="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> }.into_view()
+                                            } else {
+                                                view! { <ProviderIcon provider_type=ptype3.clone() name=pname3.clone() size=14/> }.into_view()
+                                            }}
+                                            {if busy { "Testing" } else { "Test" }}
                                         </button>
                                         {res.map(|r| view! {
-                                            <span class="text-xs font-mono" style=if r.ok { "color:#22C55e" } else { "color:#ef4444" }>
+                                            <span class="text-xs font-mono" style=if r.ok { "color:var(--success)" } else { "color:var(--danger)" }>
                                                 {if r.ok { format!("{}ms", r.latency_ms) } else { "ERR".to_string() }}
                                             </span>
                                         })}
@@ -249,13 +246,13 @@ fn ExpandedContent(
                 }.into_view()
             }}
 
-            // ── Action Buttons ──
+            // Action Buttons
             <div class="flex gap-2 justify-end pt-3 border-t border-border-subtle">
                 <button on:click=move|ev| { ev.stop_propagation(); on_edit(provider.clone()); }
-                    class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-secondary border border-surface hover:text-primary hover:bg-surface-2 active:scale-[0.97] transition-all duration-150"
+                    class="btn-base px-2.5 py-1.5 text-[11px] font-medium rounded-lg text-secondary border border-surface hover:text-primary hover:bg-surface-2"
                 >"Edit"</button>
                 <button on:click=move|ev| { ev.stop_propagation(); deleting.set(Some(pid.clone())); }
-                    class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg active:scale-[0.97] transition-all duration-150"
+                    class="btn-base px-2.5 py-1.5 text-[11px] font-medium rounded-lg text-danger border border-danger/20 hover:bg-danger-bg"
                 >"Delete"</button>
             </div>
         </div>

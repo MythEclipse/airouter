@@ -221,87 +221,81 @@ pub fn RouteRules() -> impl IntoView {
 
     let strat_badge = |s: &str| -> (&'static str, &'static str) {
         match s {
-            "single" => ("bg-blue-500/10 text-blue-400 border-blue-500/30", "Single"),
+            "single" => ("bg-info-bg text-info border-info/30", "Single"),
             "fallback" => ("bg-accent-bg text-accent border-accent/30", "Fallback"),
-            "round-robin" => ("bg-green-500/10 text-green-400 border-green-500/30", "Round-Robin"),
-            "fusion" => ("bg-amber-500/10 text-warning border-amber-500/30", "Fusion"),
-            _ => ("bg-gray-500/10 text-gray-400 border-gray-500/30", "Unknown"),
+            "round-robin" => ("bg-success-bg text-success border-success/30", "Round-Robin"),
+            "fusion" => ("bg-warning-bg text-warning border-warning/30", "Fusion"),
+            _ => ("bg-surface-2 text-muted border-border", "Unknown"),
         }
     };
 
     view! {
         <div class="animate-fade-in">
+            // Page header
             <div class="flex items-center justify-between mb-6">
                 <div>
-                    <h1 class="text-2xl font-bold text-primary">"Routes"</h1>
+                    <h1 class="text-2xl font-bold text-primary font-display tracking-tight">"Routes"</h1>
                     <p class="text-sm text-secondary mt-1">"Model-to-provider routing rules"</p>
                 </div>
                 <button on:click=move|_|show_add_form()
-                    class="px-4 py-2 text-sm font-medium rounded-lg text-white
-                           bg-accent hover:bg-accent-hover active:scale-[0.97]
-                           transition-all duration-150 flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                    </svg>
+                    class="btn-base px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                     "Add Route"
                 </button>
             </div>
 
             {move || (!error.get().is_empty()).then(||
-                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/30">{error.get()}</p> }
+                view! { <p class="mb-4 p-3 rounded-lg bg-danger-bg text-danger text-sm border border-danger/20">{error.get()}</p> }
             )}
             {move || loading.get().then(|| view! { <SkeletonTable rows=5/> })}
 
+            // Delete confirm modal
             {move || delete_id.get().map(|id| {
                 let model = route_list.with(|r| r.iter().find(|x| x.id == id).map(|x| x.model.clone()).unwrap_or_default());
                 let _id2 = id.clone();
                 view! {
-                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in"
+                    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
                         on:click=move|_|delete_id.set(None)>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] p-6 w-full max-w-md mx-4 shadow-2xl animate-scale-in"
+                        <div class="bg-surface border border-border-subtle rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-elev)] animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-start gap-3 mb-4">
-                                <div class="w-10 h-10 rounded-full bg-danger-bg flex items-center justify-center flex-shrink-0">
-                                    <svg class="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                                <div class="w-10 h-10 rounded-full bg-danger-bg flex items-center justify-center shrink-0">
+                                    <svg class="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                                     </svg>
                                 </div>
                                 <div>
-                                    <h3 class="text-base font-semibold text-primary">{format!("Delete route \"{}\"?", model)}</h3>
+                                    <h3 class="text-base font-semibold text-primary font-display tracking-tight">{format!("Delete route \"{}\"?", model)}</h3>
                                     <p class="text-sm text-secondary mt-1">"This routing rule will be permanently removed."</p>
                                 </div>
                             </div>
                             <div class="flex gap-2 justify-end">
                                 <button on:click=move|_|delete_id.set(None)
-                                    class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3 active:scale-[0.97] transition-all duration-150">
-                                    "Cancel"
-                                </button>
+                                    class="btn-base px-4 py-2 text-sm rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3">"Cancel"</button>
                                 <button on:click=move|_|do_delete(id.clone())
-                                    class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-danger hover:bg-red-600 active:scale-[0.97] transition-all duration-150">
-                                    "Delete"
-                                </button>
+                                    class="btn-base px-4 py-2 text-sm rounded-lg bg-danger/10 text-danger border border-danger/20 hover:bg-danger/20">"Delete"</button>
                             </div>
                         </div>
                     </div>
                 }
             })}
 
-            // ─── Modal Form ──────────────────────────────────────────
+            // Modal Form
             {move || show_form.get().then(|| {
                 let is_edit = edit_id.get().is_some();
                 let _strat = form_strategy.get();
                 let names = provider_names.get();
                 view! {
-                    <div class="fixed inset-0 bg-black/60 flex items-start justify-center pt-[8vh] z-50 animate-fade-in"
+                    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[8vh] z-50 animate-fade-in"
                         on:click=move|_|show_form.set(false)>
-                        <div class="bg-surface border border-border-subtle rounded-[14px] w-full max-w-lg mx-4 max-h-[84vh] overflow-y-auto shadow-2xl animate-scale-in"
+                        <div class="bg-surface border border-border-subtle rounded-xl w-full max-w-lg mx-4 max-h-[84vh] overflow-y-auto shadow-[var(--shadow-elev)] animate-scale-in"
                             on:click=move|ev| ev.stop_propagation()>
                             <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
-                                <h2 class="text-lg font-semibold text-primary">{if is_edit { "Edit Route" } else { "Add Route" }}</h2>
+                                <h2 class="text-base font-semibold text-primary font-display tracking-tight">{if is_edit { "Edit Route" } else { "Add Route" }}</h2>
                                 <button on:click=move|_|show_form.set(false)
-                                    class="text-muted hover:text-primary transition-colors">
-                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    class="text-muted hover:text-primary transition-colors p-1 rounded-lg hover:bg-surface-2">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                                     </svg>
                                 </button>
                             </div>
@@ -376,19 +370,21 @@ pub fn RouteRules() -> impl IntoView {
                                 {move || (form_strategy.get() == "fusion").then(|| {
                                     view! {
                                         <>
-                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Fusion Settings"</p></div>
+                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-muted uppercase tracking-widest mb-3">"Fusion Settings"</p></div>
                                             <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Judge Model"</label>
                                                 <input type="text" prop:value=form_judge_model.get() placeholder="e.g. gpt-4o-mini" on:input=move|ev|form_judge_model.set(event_target_value(&ev))
                                                 class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
-                                            <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Min Panel"</label>
-                                                <input type="number" prop:value=form_min_panel.get() min="1" on:input=move|ev|form_min_panel.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
-                                            <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Straggler Grace (ms)"</label>
-                                                <input type="number" prop:value=form_straggler_grace.get() min="0" step="100" on:input=move|ev|form_straggler_grace.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
-                                            <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Panel Hard Timeout (ms)"</label>
-                                                <input type="number" prop:value=form_panel_timeout.get() min="1000" step="1000" on:input=move|ev|form_panel_timeout.set(event_target_value(&ev))
-                                                class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                            <div class="grid grid-cols-3 gap-3">
+                                                <div><label class="block text-xs text-secondary mb-1.5">"Min Panel"</label>
+                                                    <input type="number" prop:value=form_min_panel.get() min="1" on:input=move|ev|form_min_panel.set(event_target_value(&ev))
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                                <div><label class="block text-xs text-secondary mb-1.5">"Grace (ms)"</label>
+                                                    <input type="number" prop:value=form_straggler_grace.get() min="0" step="100" on:input=move|ev|form_straggler_grace.set(event_target_value(&ev))
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                                <div><label class="block text-xs text-secondary mb-1.5">"Timeout (ms)"</label>
+                                                    <input type="number" prop:value=form_panel_timeout.get() min="1000" step="1000" on:input=move|ev|form_panel_timeout.set(event_target_value(&ev))
+                                                    class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary focus:border-accent focus:outline-none transition-colors"/></div>
+                                            </div>
                                         </>
                                     }
                                 })}
@@ -396,8 +392,8 @@ pub fn RouteRules() -> impl IntoView {
                                 {move || (form_strategy.get() == "round-robin").then(|| {
                                     view! {
                                         <>
-                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-secondary mb-3 uppercase tracking-wider">"Round-Robin Settings"</p></div>
-                                            <div class="mb-4"><label class="block text-xs text-secondary mb-1.5">"Sticky Limit (empty = no sticky)"</label>
+                                            <div class="mb-4 pt-3 border-t border-border-subtle"><p class="text-xs font-semibold text-muted uppercase tracking-widest mb-3">"Round-Robin Settings"</p></div>
+                                            <div><label class="block text-xs text-secondary mb-1.5">"Sticky Limit (empty = no sticky)"</label>
                                                 <input type="number" prop:value=form_sticky_limit.get() min="1" placeholder="e.g. 3" on:input=move|ev|form_sticky_limit.set(event_target_value(&ev))
                                                 class="w-full px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg text-sm text-primary placeholder-muted focus:border-accent focus:outline-none transition-colors"/></div>
                                         </>
@@ -406,10 +402,10 @@ pub fn RouteRules() -> impl IntoView {
 
                                 <div class="flex gap-3 justify-end mt-6 pt-4 border-t border-border-subtle">
                                     <button on:click=move|_|show_form.set(false)
-                                        class="px-4 py-2 text-sm font-medium rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3 active:scale-[0.97] transition-all duration-150">"Cancel"</button>
+                                        class="btn-base px-4 py-2 text-sm rounded-lg bg-surface-2 text-primary border border-surface hover:bg-surface-3">"Cancel"</button>
                                     <button on:click=move|_|save() disabled=saving.get()
-                                        class="px-4 py-2 text-sm font-medium rounded-lg text-white bg-accent hover:bg-accent-hover active:scale-[0.97] disabled:opacity-50 transition-all duration-150 flex items-center gap-2">
-                                        {saving.get().then(|| view! { "Saving..." }).unwrap_or(view! { "Save" })}
+                                        class="btn-base px-4 py-2 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white">
+                                        {if saving.get() { "Saving..." } else { "Save" }}
                                     </button>
                                 </div>
                             </div>
@@ -418,6 +414,7 @@ pub fn RouteRules() -> impl IntoView {
                 }
             })}
 
+            // Route cards grid
             {move || (!loading.get() && !show_form.get()).then(|| {
                 let rs = route_list.get();
                 let cid = copied_id.get();
@@ -439,18 +436,18 @@ pub fn RouteRules() -> impl IntoView {
                                     let curl_cid = curl_id.clone();
                                     let r_edit = r.clone();
                                     view! {
-                                        <div class="bg-surface border border-border-subtle rounded-[14px] p-5 transition-all duration-200 hover:border-surface hover:-translate-y-0.5 hover:shadow-lg group">
+                                        <div class="card-base p-5">
                                             <div class="flex items-start justify-between gap-2 mb-3">
                                                 <div class="min-w-0 flex-1">
                                                     <code class="text-sm font-mono text-accent font-semibold break-all">{r.model.clone()}</code>
                                                 </div>
-                                                <span class=badge_cls>{badge_label}</span>
+                                                <span class=format!("{} {}", badge_cls, "inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-md border shrink-0")>{badge_label}</span>
                                             </div>
 
                                             <div class="space-y-1.5 mb-3 text-xs">
                                                 <div class="flex items-center justify-between gap-2">
-                                                    <span class="text-secondary shrink-0">Providers</span>
-                                                    <span class="text-primary text-right truncate max-w-[200px]">{prov_str}</span>
+                                                    <span class="text-secondary text-[11px] shrink-0">"Providers"</span>
+                                                    <span class="text-primary text-right text-[11px] truncate max-w-[200px]">{prov_str}</span>
                                                 </div>
                                             </div>
 
@@ -462,9 +459,9 @@ pub fn RouteRules() -> impl IntoView {
                                                             let mut s = expanded.get();
                                                             if s.contains(&rid2) { s.remove(&rid2); } else { s.insert(rid2.clone()); }
                                                             expanded.set(s);
-                                                        } class="flex items-center gap-1 text-xs text-muted hover:text-primary transition-colors mb-2">
-                                                            <svg class="w-3.5 h-3.5 transition-transform" class:rotate-180=is_expanded fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                        } class="flex items-center gap-1 text-[11px] text-muted hover:text-primary transition-colors mb-2">
+                                                            <svg class="w-3 h-3 transition-transform" class:rotate-180=is_expanded fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
                                                             </svg>
                                                             {if is_expanded { "Hide Config" } else { "Config" }}
                                                         </button>
@@ -505,18 +502,18 @@ pub fn RouteRules() -> impl IntoView {
                                                             if cid2.with(|v| *v == Some(ccid)) { cid2.set(None); }
                                                         }
                                                     });
-                                                } class="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent-bg transition-all duration-150 flex items-center gap-1">
+                                                } class="btn-base px-2.5 py-1.5 text-xs rounded-lg border border-accent/30 text-accent hover:bg-accent-bg">
                                                     {if cid.as_ref() == Some(&curl_id) {
                                                         view! { <>
-                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                                             </svg>
                                                             "Copied!"
                                                         </> }
                                                     } else {
                                                         view! { <>
-                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
                                                             </svg>
                                                             "cURL"
                                                         </> }
@@ -524,9 +521,9 @@ pub fn RouteRules() -> impl IntoView {
                                                 </button>
                                                 <div class="flex gap-1.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                     <button on:click=move|_|show_edit_form(r_edit.clone())
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 transition-all duration-150">"Edit"</button>
+                                                        class="btn-base px-2.5 py-1.5 text-xs rounded-lg bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3">"Edit"</button>
                                                     <button on:click=move|_|delete_id.set(Some(rid.clone()))
-                                                        class="px-2.5 py-1.5 text-xs font-medium rounded-lg text-danger border border-danger/30 hover:bg-danger-bg transition-all duration-150">"Delete"</button>
+                                                        class="btn-base px-2.5 py-1.5 text-xs rounded-lg text-danger border border-danger/20 hover:bg-danger-bg">"Delete"</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -536,8 +533,12 @@ pub fn RouteRules() -> impl IntoView {
                         }.into_view()
                     } else {
                         view! {
-                            <div class="text-center py-12 bg-surface border border-border-subtle rounded-[14px]">
-                                <p class="text-muted text-sm">"No routes configured yet."</p>
+                            <div class="flex flex-col items-center justify-center py-16 text-center">
+                                <svg class="w-12 h-12 text-muted mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                </svg>
+                                <p class="text-secondary text-sm">"No routes configured yet"</p>
+                                <p class="text-muted text-xs mt-1">"Add a route to start routing requests"</p>
                             </div>
                         }.into_view()
                     }}

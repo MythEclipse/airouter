@@ -8,7 +8,6 @@ pub fn TagInput(
     tags: RwSignal<Vec<String>>,
 ) -> impl IntoView {
     let input_value = create_rw_signal(String::new());
-    let show_suggestions = create_rw_signal(false);
 
     let add_tag = move |val: String| {
         let trimmed = val.trim().to_string();
@@ -16,7 +15,6 @@ pub fn TagInput(
             tags.update(|t| t.push(trimmed));
         }
         input_value.set(String::new());
-        show_suggestions.set(false);
     };
 
     let remove_tag = move |idx: usize| {

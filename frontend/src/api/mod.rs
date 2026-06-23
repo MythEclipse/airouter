@@ -192,7 +192,6 @@ pub async fn fetch_dashboard() -> Result<DashboardData, String> {
 
 // ─── Providers CRUD ──────────────────────────────────────────────
 
-#[allow(dead_code)]
 pub async fn fetch_provider_types() -> Result<Vec<ProviderTypeInfo>, String> {
     api_request::<Vec<ProviderTypeInfo>>("GET", "/api/dashboard/provider-types", None).await
 }

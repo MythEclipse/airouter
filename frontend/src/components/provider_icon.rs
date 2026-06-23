@@ -1,6 +1,5 @@
 use leptos::*;
 
-/// Map provider_type to the actual icon PNG path
 fn icon_path(provider_type: &str) -> String {
     match provider_type {
         "cloudflare" => "/providers/cloudflare-ai.png".to_string(),
@@ -11,56 +10,55 @@ fn icon_path(provider_type: &str) -> String {
     }
 }
 
-/// Category badge colors (matching backend)
+/// Returns (css_class, label) for category badge
 pub fn category_style(cat: &str) -> (&'static str, &'static str) {
     match cat {
         "free" => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-[rgba(34,197,94,0.1)] text-success border-success/30",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-success-bg text-success border-success/30",
             "Free",
         ),
         "free-tier" => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-[rgba(154,107,219,0.1)] text-[#9a6bdb] border-[#9a6bdb]/30",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-info-bg text-info border-info/30",
             "Free Tier",
         ),
         "api-key" => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-[rgba(88,166,255,0.1)] text-[#58a6ff] border-[rgba(88,166,255,0.3)]",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-accent-bg text-accent border-accent/30",
             "API Key",
         ),
         "oauth" => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-[rgba(219,107,40,0.1)] text-[#db6b28] border-[rgba(219,107,40,0.3)]",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-warning-bg text-warning border-warning/30",
             "OAuth",
         ),
         "web-cookie" => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-[rgba(219,107,154,0.1)] text-[#db6b9a] border-[rgba(219,107,154,0.3)]",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-[rgba(219,107,154,0.12)] text-[#db6b9a] border-[rgba(219,107,154,0.3)]",
             "Web Cookie",
         ),
         _ => (
-            "inline-flex px-2 py-0.5 text-xs font-medium rounded-lg \
-             border bg-gray-500/10 text-gray-400 border-gray-500/30",
+            "inline-flex px-2 py-0.5 text-[11px] font-medium rounded-md \
+             border bg-surface-2 text-muted border-border",
             "Unknown",
         ),
     }
 }
 
-/// Category section color for the left accent bar
+/// Category accent color for section dividers
 pub fn category_accent(cat: &str) -> &'static str {
     match cat {
-        "free" => "#22C55e",
-        "free-tier" => "#9a6bdb",
-        "api-key" => "#58a6ff",
-        "oauth" => "#db6b28",
+        "free" => "#2dd4bf",
+        "free-tier" => "#60a5fa",
+        "api-key" => "#d4875a",
+        "oauth" => "#f0b429",
         "web-cookie" => "#db6b9a",
-        _ => "#6b7280",
+        _ => "#6b6763",
     }
 }
 
-/// ProviderIcon — renders PNG image with colored-initial fallback.
-/// Fallback only shows while image loads or on error — no more overlap.
+/// ProviderIcon — renders PNG with colored-initial fallback while loading
 #[component]
 pub fn ProviderIcon(
     provider_type: String,
@@ -70,7 +68,7 @@ pub fn ProviderIcon(
 ) -> impl IntoView {
     let sz = size.unwrap_or(36);
     let bg = color.unwrap_or_else(|| "#60a5fa".to_string());
-    let fallback_text = name.chars().next().map(|c| c.to_string()).unwrap_or_default();
+    let initial = name.chars().next().map(|c| c.to_string()).unwrap_or_default();
     let src = icon_path(&provider_type);
 
     let img_loaded = create_rw_signal(false);
@@ -78,25 +76,22 @@ pub fn ProviderIcon(
 
     view! {
         <div
-            class="relative shrink-0 rounded-lg overflow-hidden"
+            class="relative shrink-0 rounded-lg overflow-hidden ring-1 ring-border/50"
             style=format!("width: {}px; height: {}px", sz, sz)
         >
-            // Fallback layer — visible only while image hasn't loaded yet
             {move || (!img_loaded.get()).then(|| view! {
                 <div
-                    class="absolute inset-0 w-full h-full flex items-center justify-center text-sm font-bold rounded-lg"
-                    style=format!("background-color: {}15; color: {}", bg, bg)
+                    class="absolute inset-0 flex items-center justify-center text-sm font-bold"
+                    style=format!("background-color: {}18; color: {}", bg, bg)
                 >
-                    {fallback_text.clone()}
+                    {initial.clone()}
                 </div>
             })}
-
-            // Image layer — shows when loaded, hides on error
             <img
                 src=src
                 alt=name.clone()
-                class="absolute inset-0 w-full h-full object-cover rounded-lg"
-                style=move || if img_errored.get() { "display: none" } else { "display: block" }
+                class="absolute inset-0 w-full h-full object-cover"
+                style=move || if img_errored.get() { "display:none" } else { "display:block" }
                 on:load=move |_| { img_loaded.set(true); img_errored.set(false); }
                 on:error=move |_| { img_loaded.set(false); img_errored.set(true); }
             />
