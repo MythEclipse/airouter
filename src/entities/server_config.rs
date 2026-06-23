@@ -9,6 +9,9 @@ pub struct Model {
     pub host: String,
     pub port: i32,
     pub default_max_tokens: Option<i32>,
+    pub password_hash: Option<String>,
+    pub password_changed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub must_change_password: bool,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

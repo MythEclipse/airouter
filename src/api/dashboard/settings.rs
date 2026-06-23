@@ -40,6 +40,9 @@ async fn get_settings(
         .unwrap_or(server_config::Model {
             id: 1, host: "0.0.0.0".into(), port: 3000,
             default_max_tokens: None,
+            password_hash: None,
+            password_changed_at: None,
+            must_change_password: false,
             updated_at: chrono::Utc::now(),
         });
 

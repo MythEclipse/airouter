@@ -189,6 +189,9 @@ pub async fn seed_defaults(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr
             host: sea_orm::ActiveValue::Set("0.0.0.0".into()),
             port: sea_orm::ActiveValue::Set(3000),
             default_max_tokens: sea_orm::ActiveValue::Set(None),
+            password_hash: sea_orm::ActiveValue::Set(None),
+            password_changed_at: sea_orm::ActiveValue::Set(None),
+            must_change_password: sea_orm::ActiveValue::Set(false),
             updated_at: sea_orm::ActiveValue::Set(Utc::now()),
         })
         .exec(db).await?;
@@ -222,6 +225,9 @@ pub async fn load_config_from_db(db: &DatabaseConnection) -> Result<Settings, se
         .unwrap_or(server_config::Model {
             id: 1, host: "0.0.0.0".into(), port: 3000,
             default_max_tokens: None,
+            password_hash: None,
+            password_changed_at: None,
+            must_change_password: false,
             updated_at: chrono::Utc::now(),
         });
 
