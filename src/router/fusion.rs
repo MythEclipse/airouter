@@ -7,6 +7,7 @@ use crate::provider::{Provider, ProviderError, ProviderRegistry};
 use crate::router::core::DispatchError;
 use crate::tracker::RequestTracker;
 use arc_swap::ArcSwap;
+use metrics::{counter, histogram};
 use crate::types::openai::*;
 
 /// Execute fusion strategy: parallel fan-out to all providers,
@@ -80,13 +81,25 @@ pub async fn execute_fusion(
 
         match tokio::time::timeout(timeout, join_set.join_next()).await {
             Ok(Some(Ok((pname, latency, Ok(resp))))) => {
+                counter!("airouter_provider_requests_total",
+                    "provider" => pname.clone(), "model" => model_owned.clone(), "status" => "success").increment(1);
+                histogram!("airouter_provider_latency_ms",
+                    "provider" => pname.clone(), "model" => model_owned.clone()).record(latency.as_millis() as f64);
                 responses.push((pname, latency, resp));
                 if responses.len() >= min_panel && grace_deadline.is_none() {
                     grace_deadline = Some(Instant::now() + Duration::from_millis(straggler_grace_ms));
                 }
             }
             Ok(Some(Ok((pname, latency, Err(e))))) => {
-                let error_kind = format!("{:?}", e.error_class());
+                let elapsed_ms = latency.as_millis() as f64;
+                let class = e.error_class();
+                counter!("airouter_provider_requests_total",
+                    "provider" => pname.clone(), "model" => model_owned.clone(), "status" => "error").increment(1);
+                histogram!("airouter_provider_latency_ms",
+                    "provider" => pname.clone(), "model" => model_owned.clone()).record(elapsed_ms);
+                counter!("airouter_provider_errors_total",
+                    "provider" => pname.clone(), "error_class" => class.as_label_str()).increment(1);
+                let error_kind = format!("{:?}", class);
                 let error_detail = e.to_string();
                 tracing::warn!(
                     provider = %pname,

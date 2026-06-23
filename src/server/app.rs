@@ -81,9 +81,9 @@ pub fn create_router(
                 .fallback(ServeFile::new(format!("{}/index.html", FRONTEND_DIST)))
         )
         .layer(CorsLayer::permissive())
-        // request_id middleware runs BEFORE TraceLayer so request_id is in
-        // request extensions when TraceLayer's MakeSpan creates the span.
-        .layer(from_fn(request_id_middleware))
+        // TraceLayer must be inner so it runs AFTER request_id_middleware
+        // on the request path, guaranteeing request_id is in extensions
+        // when MakeSpan fires.
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &axum::http::Request<_>| {
@@ -110,6 +110,7 @@ pub fn create_router(
                     );
                 }),
         )
+        .layer(from_fn(request_id_middleware))
         // metrics middleware wraps ALL routes including health and metrics
         .layer(from_fn(metrics_middleware))
         .with_state(state)

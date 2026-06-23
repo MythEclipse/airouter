@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use sea_orm::ConnectionTrait;
 
@@ -38,14 +38,14 @@ fn rate_limited() -> bool {
     let now = Instant::now();
     static LAST: OnceLock<Mutex<Instant>> = OnceLock::new();
     let mut last = LAST
-        .get_or_init(|| Mutex::new(now))
+        .get_or_init(|| Mutex::new(now - Duration::from_secs(1)))
         .lock()
         .expect("health rate-limiter lock poisoned");
     if now.duration_since(*last).as_secs() < 1 {
-        return false;
+        return true;
     }
     *last = now;
-    true
+    false
 }
 
 /// `GET /health` — Liveness probe.
@@ -56,7 +56,7 @@ fn rate_limited() -> bool {
 pub async fn health_check(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    if !rate_limited() {
+    if rate_limited() {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(HealthResponse {
