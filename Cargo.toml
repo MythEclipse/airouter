@@ -44,3 +44,4 @@ tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 testcontainers = "0.20"
 testcontainers-modules = { version = "0.8", features = ["postgres", "redis"] }
+proptest = "1"
