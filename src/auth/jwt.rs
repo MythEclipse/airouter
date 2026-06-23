@@ -1,8 +1,19 @@
 use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
 use serde::{Serialize, Deserialize};
-use chrono::{Utc, Duration};
+use chrono::Utc;
+
+#[cfg(test)]
+use chrono::Duration;
 
 use crate::auth::jwt_secret_store::JwtSecrets;
+
+#[derive(Debug, thiserror::Error)]
+pub enum JwtError {
+    #[error("Invalid token")]
+    InvalidToken,
+    #[error("Token expired")]
+    ExpiredToken,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,7 +39,7 @@ pub fn create_token_with_type(
     ttl_secs: i64,
 ) -> anyhow::Result<String> {
     let now = Utc::now().timestamp() as usize;
-    let exp = (Utc::now().timestamp() + ttl_secs) as usize;
+    let exp = (now as i64 + ttl_secs) as usize;
     let claims = Claims {
         sub: sub.to_string(),
         iat: now,
@@ -54,7 +65,7 @@ pub fn create_ai_token(secret: &str) -> anyhow::Result<String> {
 }
 
 /// Validate a JWT using current secret first, then previous (if in grace).
-pub fn validate_token(token: &str, secrets: &JwtSecrets) -> Result<Claims, jsonwebtoken::errors::Error> {
+pub fn validate_token(token: &str, secrets: &JwtSecrets) -> Result<Claims, JwtError> {
     // Try current
     if let Ok(claims) = decode_one(token, &secrets.current_secret) {
         return Ok(claims);
@@ -71,7 +82,7 @@ pub fn validate_token(token: &str, secrets: &JwtSecrets) -> Result<Claims, jsonw
     decode_one(token, &secrets.current_secret)
 }
 
-fn decode_one(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
+fn decode_one(token: &str, secret: &str) -> Result<Claims, JwtError> {
     let validation = Validation::default();
     decode::<Claims>(
         token,
@@ -79,6 +90,13 @@ fn decode_one(token: &str, secret: &str) -> Result<Claims, jsonwebtoken::errors:
         &validation,
     )
     .map(|data| data.claims)
+    .map_err(|e| {
+        use jsonwebtoken::errors::ErrorKind;
+        match e.kind() {
+            ErrorKind::ExpiredSignature => JwtError::ExpiredToken,
+            _ => JwtError::InvalidToken,
+        }
+    })
 }
 
 #[cfg(test)]
