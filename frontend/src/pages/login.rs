@@ -4,10 +4,8 @@ use wasm_bindgen_futures::JsFuture;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct LoginResponse {
-    ok: bool,
-    dashboard_token: String,
-    ai_token: String,
-    message: String,
+    token: String,
+    must_change: bool,
 }
 
 #[component]
@@ -28,7 +26,6 @@ pub fn Login() -> impl IntoView {
 
         let body = serde_json::json!({ "password": pwd }).to_string();
         spawn_local({
-            let _password = password.clone();
             let error_msg = error_msg.clone();
             let logging_in = logging_in.clone();
             async move {
@@ -47,16 +44,16 @@ pub fn Login() -> impl IntoView {
                         match json {
                             Ok(j) => {
                                 if let Ok(resp) = serde_wasm_bindgen::from_value::<LoginResponse>(j) {
-                                    if resp.ok {
-                                        let storage = window.local_storage().ok().flatten();
-                                        if let Some(storage) = storage {
-                                            let _ = storage.set_item("dashboard_token", &resp.dashboard_token);
-                                            let _ = storage.set_item("ai_token", &resp.ai_token);
-                                        }
+                                    let storage = window.local_storage().ok().flatten();
+                                    if let Some(storage) = storage {
+                                        let _ = storage.set_item("dashboard_token", &resp.token);
+                                    }
+                                    if resp.must_change {
+                                        let loc = window.location();
+                                        let _ = loc.set_href("/change-password");
+                                    } else {
                                         let loc = window.location();
                                         let _ = loc.set_href("/");
-                                    } else {
-                                        error_msg.set(resp.message);
                                     }
                                 } else {
                                     error_msg.set("Login failed".into());
@@ -81,14 +78,18 @@ pub fn Login() -> impl IntoView {
     }
 
     view! {
-        <div class="min-h-screen bg-bg flex items-center justify-center p-4">
-            <div class="w-full max-w-sm">
+        <div class="min-h-screen bg-bg flex items-center justify-center p-4 relative overflow-hidden">
+            // Subtle gradient glow
+            <div class="absolute inset-0 pointer-events-none">
+                <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/3 rounded-full blur-[120px]"></div>
+            </div>
+            <div class="w-full max-w-sm relative">
                 <div class="text-center mb-8">
-                    <h1 class="text-3xl font-bold text-primary">"AIRouter"</h1>
-                    <p class="text-secondary text-sm mt-2">"Sign in to your dashboard"</p>
+                    <h1 class="text-3xl font-bold text-primary font-display tracking-tight">"AIRouter"</h1>
+                    <p class="text-secondary text-sm mt-2">"AI Gateway Dashboard"</p>
                 </div>
 
-                <div class="bg-surface border border-border-subtle rounded-[14px] p-6 shadow-xl">
+                <div class="bg-surface border border-border-subtle rounded-xl p-6 shadow-[var(--shadow-elev)]">
                     <div class="mb-4">
                         <label for="login-password" class="block text-xs text-secondary mb-1.5 font-medium">"Password"</label>
                         <div class="relative">
@@ -103,33 +104,28 @@ pub fn Login() -> impl IntoView {
                                     if ev.key() == "Enter" { do_login(); }
                                 }
                                 disabled=move || logging_in.get()
-                                class="w-full px-3 py-2 pr-10 bg-surface-2 border border-border-subtle rounded-lg
-                                       text-sm text-primary placeholder-muted
-                                       focus:border-accent focus:outline-none transition-colors
+                                class="w-full px-3 py-2.5 pr-10 bg-surface-2 border border-border-subtle rounded-lg \
+                                       text-sm text-primary placeholder-muted \
+                                       focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none transition-all \
                                        disabled:opacity-50"
                             />
                             <button
                                 type="button"
                                 aria-label=move || if show_password.get() { "Hide password" } else { "Show password" }
                                 on:click=move|_| show_password.update(|v| *v = !*v)
-                                class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors p-1"
+                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors p-1"
                             >
                                 {move || if show_password.get() {
-                                    // Eye-off icon
                                     view! {
-                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
                                         </svg>
                                     }.into_view()
                                 } else {
-                                    // Eye icon
                                     view! {
-                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                                         </svg>
                                     }.into_view()
                                 }}
@@ -140,7 +136,7 @@ pub fn Login() -> impl IntoView {
                     <div id="login-error" role="alert" aria-live="assertive">
                         {move || (!error_msg.get().is_empty()).then(|| {
                             view! {
-                                <p class="mb-4 text-sm text-danger bg-danger-bg p-2.5 rounded-lg border border-danger/30">
+                                <p class="mb-4 text-sm text-danger bg-danger-bg p-2.5 rounded-lg border border-danger/20">
                                     {error_msg.get()}
                                 </p>
                             }
@@ -150,11 +146,7 @@ pub fn Login() -> impl IntoView {
                     <button
                         on:click=move|_| do_login()
                         disabled=move || logging_in.get()
-                        class="w-full px-4 py-2.5 text-sm font-medium rounded-lg text-white
-                               bg-accent hover:bg-accent-hover
-                               active:scale-[0.97] transition-all duration-150
-                               disabled:opacity-50 disabled:cursor-not-allowed
-                               flex items-center justify-center gap-2"
+                        class="btn-base w-full px-4 py-2.5 text-sm rounded-lg bg-accent hover:bg-accent-hover text-white"
                     >
                         {move || if logging_in.get() {
                             view! {
@@ -171,9 +163,8 @@ pub fn Login() -> impl IntoView {
                         }}
                     </button>
 
-                    <p class="text-xs text-muted text-center mt-4">
-                        "Default password: "
-                        <code class="font-mono text-primary bg-surface-2 px-1.5 py-0.5 rounded">123456</code>
+                    <p class="text-xs text-muted text-center mt-5">
+                        "AIRouter Gateway v0.1"
                     </p>
                 </div>
             </div>
