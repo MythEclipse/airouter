@@ -7,11 +7,12 @@ use axum::{
 use std::sync::Arc;
 use crate::auth::{extract_bearer_token, sha2_hex};
 use crate::auth::jwt;
+use crate::auth::jwt::TokenType;
 use crate::server::app::AppState;
 
 pub async fn auth_middleware(
     State(state): State<Arc<AppState>>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Response {
     let path = req.uri().path();
@@ -38,6 +39,18 @@ pub async fn auth_middleware(
     let secrets = state.jwt_secrets.get();
     match jwt::validate_token(&token, &secrets) {
         Ok(claims) => {
+            // Token type enforcement per route
+            let typ_allowed = match path {
+                p if p.starts_with("/api/auth/change-password") => claims.typ == TokenType::ChangePwd,
+                _ => claims.typ == TokenType::Login,
+            };
+            if !typ_allowed {
+                return unauthorized_response();
+            }
+
+            // Insert claims into extensions for downstream handlers
+            req.extensions_mut().insert(claims.clone());
+
             // JWT valid — check scope
             let required_sub = if is_dashboard { "dashboard" } else { "ai" };
             if claims.sub == required_sub || (!is_dashboard && claims.sub == "dashboard") {
