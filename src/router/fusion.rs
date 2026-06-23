@@ -86,11 +86,23 @@ pub async fn execute_fusion(
                 }
             }
             Ok(Some(Ok((pname, _, Err(e))))) => {
-                tracing::warn!(provider = %pname, error = %e, "Fusion panel provider failed");
+                let error_kind = format!("{:?}", e.error_class());
+                let error_detail = e.to_string();
+                tracing::warn!(
+                    provider = %pname,
+                    error = %e,
+                    error_kind = %error_kind,
+                    error_detail = %error_detail,
+                    "Fusion panel provider failed",
+                );
                 tracker.record_request(redis, &pname, &model_owned, 0, false).await;
             }
             Ok(Some(Err(join_err))) => {
-                tracing::warn!("Fusion join error: {}", join_err);
+                tracing::warn!(
+                    error_kind = "JoinError",
+                    error_detail = %join_err,
+                    "Fusion join error",
+                );
             }
             Ok(None) => break,
             Err(_) => break,
@@ -140,7 +152,11 @@ pub async fn execute_fusion(
         if let Ok(judge_resp) = call_judge_async(&judge_request, registry).await {
             return Ok(Json(judge_resp).into_response());
         }
-        tracing::warn!("Fusion judge failed, returning first panel response");
+        tracing::warn!(
+            error_kind = "FusionJudgeFailed",
+            error_detail = "Judge model call failed, falling back to first panel response",
+            "Fusion judge failed, returning first panel response",
+        );
     }
 
     let (_, _, resp) = responses.remove(0);

@@ -267,7 +267,15 @@ impl RouteEngine {
                     Err(e) => {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
-                        tracing::warn!(provider = %pname, model = %model, error = %e, "Stream provider failed");
+                        tracing::warn!(
+                            provider = %pname,
+                            model = %model,
+                            error = %e,
+                            error_kind = %format!("{:?}", class),
+                            error_detail = %e,
+                            latency_ms = elapsed as u64,
+                            "Stream provider failed",
+                        );
                         tracker.record_request(&self.redis, pname, model, elapsed as u64, false).await;
                         self.balancer.mark_cooldown_with_class(pname, class).await;
                         last_error = e.to_string();
@@ -287,7 +295,15 @@ impl RouteEngine {
                     Err(e) => {
                         let elapsed = start.elapsed().as_millis();
                         let class = e.error_class();
-                        tracing::warn!(provider = %pname, model = %model, error = %e, "Provider failed");
+                        tracing::warn!(
+                            provider = %pname,
+                            model = %model,
+                            error = %e,
+                            error_kind = %format!("{:?}", class),
+                            error_detail = %e,
+                            latency_ms = elapsed as u64,
+                            "Provider failed",
+                        );
                         tracker.record_request(&self.redis, pname, model, elapsed as u64, false).await;
                         self.balancer.mark_cooldown_with_class(pname, class).await;
                         last_error = e.to_string();
@@ -299,6 +315,12 @@ impl RouteEngine {
             }
         }
 
+        tracing::error!(
+            error_kind = "AllProvidersFailed",
+            error_detail = %last_error,
+            latency_ms = %start.elapsed().as_millis(),
+            "All providers failed",
+        );
         Err(DispatchError::AllProvidersFailed(format!("All providers failed: {}", last_error)))
     }
 

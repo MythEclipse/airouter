@@ -11,16 +11,26 @@ mod streaming;
 mod types;
 pub mod tracker;
 mod entities;
+mod logging;
 
 use std::sync::Arc;
+use std::time::Duration;
 use arc_swap::ArcSwap;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::layer::Layer;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .json()
+    // ── Initialize structured JSON logging with error dedup ──────────
+    tracing_subscriber::registry()
+        .with(crate::logging::ErrorDedupLayer::new(Duration::from_secs(1)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())),
+        )
         .init();
 
     tracing::info!("Starting AIRouter...");

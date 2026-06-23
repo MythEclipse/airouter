@@ -8,6 +8,7 @@ pub mod auth;
 pub mod oauth;
 pub mod rate_limit;
 pub mod streaming;
+pub mod logging;
 pub mod tracker;
 pub mod types;
 pub mod entities;

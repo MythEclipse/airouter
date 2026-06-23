@@ -7,6 +7,7 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use arc_swap::ArcSwap;
 use crate::auth::key_store::KeyStore;
 use tower_http::cors::CorsLayer;
@@ -68,7 +69,6 @@ pub fn create_router(
         .route("/health", get(crate::api::health::health_check))
         .route("/health/ready", get(crate::api::health::health_ready))
         .route("/metrics", get(handle_metrics))
-        .layer(from_fn(request_id_middleware))
         .merge(ai_routes)
         // Auth routes (login is public — handled in middleware)
         .merge(auth_routes)
@@ -80,7 +80,35 @@ pub fn create_router(
                 .fallback(ServeFile::new(format!("{}/index.html", FRONTEND_DIST)))
         )
         .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
+        // request_id middleware runs BEFORE TraceLayer so request_id is in
+        // request extensions when TraceLayer's MakeSpan creates the span.
+        .layer(from_fn(request_id_middleware))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<_>| {
+                    let request_id = request
+                        .extensions()
+                        .get::<String>()
+                        .map(|s| s.as_str())
+                        .unwrap_or("");
+                    tracing::info_span!(
+                        "http_request",
+                        request_id = %request_id,
+                        method = %request.method().as_str(),
+                        path = %request.uri().path_and_query()
+                            .map(|pq| pq.as_str())
+                            .unwrap_or(""),
+                    )
+                })
+                .on_response(|response: &axum::http::Response<_>, latency: Duration, _span: &tracing::Span| {
+                    let status = response.status().as_u16();
+                    tracing::info!(
+                        status = status,
+                        latency_ms = latency.as_millis() as u64,
+                        "request completed"
+                    );
+                }),
+        )
         .with_state(state)
 }
 
