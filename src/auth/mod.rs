@@ -1,4 +1,5 @@
 pub mod jwt_secret_store;
+pub mod key_store;
 pub mod middleware;
 pub mod jwt;
 pub mod password;
